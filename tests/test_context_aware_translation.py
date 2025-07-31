@@ -1,0 +1,26 @@
+import unittest
+
+from translator.enhanced_excel_handler import EnhancedExcelHandler
+from translator.integrated_translator import IntegratedTranslator
+
+
+class TestContextAwareTranslation(unittest.IsolatedAsyncioTestCase):
+    async def asyncSetUp(self):
+        self.translator = IntegratedTranslator(
+            use_context_aware=True, preserve_format=True
+        )
+        self.enhanced_excel_handler = EnhancedExcelHandler()
+        self.test_file = "docs/案例5.xlsx"
+        self.output_path = "output"
+
+    async def test_translate_excel_with_context(self):
+        # Test translation with context
+        result = await self.translator.translate_excel_file(
+            self.test_file, output_path=self.output_path, target_language="english"
+        )
+
+        print("Translation result:", result)
+
+
+if __name__ == "__main__":
+    unittest.main()
