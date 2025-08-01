@@ -11,6 +11,7 @@ from openai import AsyncOpenAI
 from config.settings import settings
 from config.logging_config import get_logger
 from tqdm.asyncio import tqdm_asyncio
+from translator.translation_filter import needs_translation
 
 logger = get_logger(__name__)
 
@@ -208,6 +209,15 @@ class BatchTranslator:
         # 设置翻译后的列名
         translated_df.columns = translated_columns
 
+        # 处理可能由pandas自动生成的"Unnamed:*"列名
+        final_columns = []
+        for col in translated_df.columns:
+            if isinstance(col, str) and col.startswith("Unnamed:"):
+                final_columns.append("")
+            else:
+                final_columns.append(col)
+        translated_df.columns = final_columns
+
         # 确保所有未翻译的单元格保留其原始值，而不是变成NaN
         translated_df = translated_df.fillna(df)
 
@@ -288,10 +298,11 @@ class BatchTranslator:
                 if pd.isna(original_value) or str(original_value).strip() == "":
                     continue
                 text = str(original_value).strip()
-                # 处理包含中文的文本
-                if any(ord(c) > 127 for c in text):
-                    texts.append(text)
-                    positions.append((idx, col_name))
+                # 检查是否需要翻译
+                if not needs_translation(text, self.target_language):
+                    continue
+                texts.append(text)
+                positions.append((idx, col_name))
         # 添加调试信息
         logger.info(f"Extracted {len(texts)} texts for translation")
         if len(texts) > 0:
@@ -346,19 +357,22 @@ class BatchTranslator:
                 translated_columns.append(col_name)
             else:
                 col_name_str = str(col_name)
-                logger.debug(f"Processing column name: '{col_name_str}'")
                 # 处理空列名
                 if not col_name_str.strip():
                     logger.debug(f"Column name is empty: '{col_name_str}'")
                     translated_columns.append("")
-                # 对于"Unnamed"列名，替换为空字符串
+                # 对于"Unnamed"列名，替换为空字符串（优先处理，不受翻译过滤器影响）
                 elif col_name_str.startswith("Unnamed:"):
                     logger.debug(
                         f"Column name starts with 'Unnamed:', replacing with empty string: '{col_name_str}'"
                     )
                     translated_columns.append("")
-                # 对于非空列名，进行翻译
+                # 检查列名是否需要翻译
+                elif not needs_translation(col_name_str, target_lang):
+                    translated_columns.append(col_name_str)
+                    continue
                 else:
+                    logger.debug(f"Processing column name: '{col_name_str}'")
                     logger.debug(f"Translating column name: '{col_name_str}'")
                     # 使用现有的翻译方法翻译列名
                     translated_name = await self._translate_single_text(
@@ -565,7 +579,8 @@ class BatchTranslator:
         4. Return only the translated texts without any explanations
         5. Ensure complete translation, no partial translation allowed
         6. Each translation should be on a separate line
-        7. if it is not a valid or complete Chinese text, return original text
+        7. Do not include the numbering (e.g., "1.", "2.") in the translations
+        8. if it is not a valid or complete Chinese text, return original text
 
         {texts_list_str}
 
@@ -585,8 +600,15 @@ class BatchTranslator:
         # 按行分割结果
         lines = result.strip().split("\n")
 
-        # 过滤空行
-        translations = [line.strip() for line in lines if line.strip()]
+        # 过滤空行并去除行首的序号
+        translations = []
+        for line in lines:
+            if line.strip():
+                # 去除行首的序号（如 "1. "、"2. " 等）
+                cleaned_line = line.strip()
+                if ". " in cleaned_line and cleaned_line.split(". ", 1)[0].isdigit():
+                    cleaned_line = cleaned_line.split(". ", 1)[1]
+                translations.append(cleaned_line)
 
         # 如果结果数量不匹配，尝试其他解析方法
         if len(translations) != expected_count:
