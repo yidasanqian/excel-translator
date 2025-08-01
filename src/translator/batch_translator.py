@@ -10,6 +10,7 @@ import tiktoken
 from openai import AsyncOpenAI
 from config.settings import settings
 from config.logging_config import get_logger
+from tqdm.asyncio import tqdm_asyncio
 
 logger = get_logger(__name__)
 
@@ -180,13 +181,22 @@ class BatchTranslator:
 
         # 翻译所有批次
         translated_texts = []
-        for i, batch in enumerate(batches):
-            logger.info(
-                f"Translating batch {i + 1}/{len(batches)} with {len(batch.texts)} texts"
+        total_batches = len(batches)
+        # 使用 tqdm 进度条显示翻译进度
+        batch_tasks = [
+            self.translate_batch_with_context(
+                i + 1, total_batches, batch, table_context, target
             )
-            batch_translations = await self.translate_batch_with_context(
-                i + 1, len(batches), batch, table_context, target
-            )
+            for i, batch in enumerate(batches)
+        ]
+
+        # 使用 tqdm_asyncio.gather 来显示进度条
+        batch_results = await tqdm_asyncio.gather(
+            *batch_tasks, desc="翻译进度", unit="批次"
+        )
+
+        # 处理翻译结果
+        for batch_translations in batch_results:
             translated_texts.extend(batch_translations)
             self.stats["batches_processed"] += 1
 
@@ -466,6 +476,8 @@ class BatchTranslator:
                 logger.debug(
                     f"Translating batch with {len(batch.texts)} texts (attempt {attempt + 1})"
                 )
+                # 记录API调用开始
+                api_start_time = asyncio.get_event_loop().time()
                 response = await self.client.chat.completions.create(
                     model=self.model,
                     messages=[
@@ -478,7 +490,12 @@ class BatchTranslator:
                     max_tokens=min(4096, self.max_tokens // 2),
                     timeout=self.timeout,
                 )
+                api_end_time = asyncio.get_event_loop().time()
+                api_duration = api_end_time - api_start_time
                 self.stats["api_calls"] += 1
+                logger.debug(
+                    f"API call completed in {api_duration:.2f}s with {response.usage.total_tokens if response.usage else 'unknown'} tokens"
+                )
 
                 translated_content = response.choices[0].message.content.strip()
                 translations = self._parse_batch_translation_result(
