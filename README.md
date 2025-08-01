@@ -3,7 +3,7 @@
 ![License](https://img.shields.io/badge/license-MIT-blue)
 ![OpenAI](https://img.shields.io/badge/openai-gpt--4o-green)
 
-一个基于OpenAI的智能Excel翻译器，具有上下文感知功能，能够准确翻译Excel文件中的内容，同时保持原有的格式和结构。
+一个基于OpenAI的智能Excel翻译器，具有上下文感知功能和批量翻译能力，能够准确翻译Excel文件中的内容，同时保持原有的格式和结构。
 
 ## 简介
 
@@ -14,12 +14,12 @@ Excel Translator是一个强大的工具，专门用于翻译Excel电子表格�
 ## 特性
 
 - **上下文感知翻译**：利用表格结构、列类型和专业领域信息进行智能翻译，确保翻译结果符合上下文语境
-- **批量翻译**：支持将多行数据合并为单个翻译请求，显著提高翻译效率并减少API调用次数
+- **批量翻译**：支持将多行数据合并为单个翻译请求，显著提高翻译效率并减少API调用次数。具有以下高级特性：
+- **智能分批**：根据模型token限制智能分批处理大量数据，自动优化批次大小
 - **多Sheet支持**：支持翻译包含多个工作表的Excel文件，保持工作表间的引用关系
 - **格式保留**：可选择保留原始Excel文件的格式，包括合并单元格、字体样式、边框等
 - **术语管理**：内置专业领域术语库（机械、电气等），确保专业术语翻译的一致性
 - **智能缓存**：内置缓存机制，避免重复翻译相同内容，提高处理效率
-- **批量处理**：智能分批处理大量数据，优化API调用次数和成本
 - **领域检测**：自动识别内容所属的专业领域（机械、电气、软件、医疗等），应用相应的翻译规则
 - **OpenAI集成**：使用先进的AI模型（如GPT-4o）进行高质量翻译，支持多种语言
 - **异步处理**：采用异步编程模型，提高处理效率和响应速度
@@ -87,7 +87,7 @@ pip install -e .
    # 批量翻译设置
    BATCH_TRANSLATION_ENABLED=true
    MAX_TOKENS=8192
-   TOKEN_BUFFER=1000
+   TOKEN_BUFFER=500
    
    # 文件设置
    UPLOAD_DIR=uploads
@@ -111,9 +111,9 @@ pip install -e .
 - `MAX_BATCH_SIZE`: 批量翻译的最大单元数，默认为 `50`
 - `REQUEST_TIMEOUT`: API请求超时时间（秒），默认为 `30`
 - `PRESERVE_FORMAT`: 是否保留原始Excel格式，默认为 `true`
-- `BATCH_TRANSLATION_ENABLED`: 是否启用批量翻译，默认为 `true`
-- `MAX_TOKENS`: 最大输出token数量，默认为 `8192`
-- `TOKEN_BUFFER`: token缓冲区大小，默认为 `1000`
+- `BATCH_TRANSLATION_ENABLED`: 是否启用批量翻译，默认为 `true`。启用后将使用上下文感知的批量翻译功能，显著提高翻译效率并减少API调用次数
+- `MAX_TOKENS`: 最大输出token数量，默认为 `8192`。用于控制批量翻译中每个批次的最大token数量，避免超出模型限制
+- `TOKEN_BUFFER`: token缓冲区大小，默认为 `1000`。为批量翻译中的格式化内容预留的token空间，确保不会因格式化内容超出token限制
 - `UPLOAD_DIR`: 上传文件目录，默认为 `uploads`
 - `OUTPUT_DIR`: 输出文件目录，默认为 `output`
 - `MAX_FILE_SIZE`: 最大文件大小（字节），默认为 `10485760`（10MB）
@@ -150,6 +150,39 @@ async def translate_excel():
 asyncio.run(translate_excel())
 ```
 
+#### 批量翻译
+
+Excel Translator默认启用批量翻译功能，可以显著提高翻译效率并减少API调用次数。批量翻译会智能地将多个文本单元组合成批次进行翻译，同时保持上下文信息。
+
+```python
+import asyncio
+from translator.integrated_translator import IntegratedTranslator
+
+async def translate_excel_with_batch():
+    # 创建翻译器实例（默认启用批量翻译）
+    translator = IntegratedTranslator(
+        use_context_aware=True,      # 使用上下文感知翻译
+        preserve_format=True,       # 保留原始格式
+        batch_translation_enabled=True  # 启用批量翻译（默认值）
+    )
+    
+    # 翻译Excel文件（将自动使用批量翻译）
+    result_path = await translator.translate_excel_file(
+        file_path="input.xlsx",
+        output_path="output",
+        target_language="english"
+    )
+    
+    print(f"翻译完成，结果保存在: {result_path}")
+    
+    # 获取翻译统计信息
+    stats = translator.get_translation_stats()
+    print(f"翻译统计: {stats}")
+
+# 运行异步函数
+asyncio.run(translate_excel_with_batch())
+```
+
 ### 命令行使用
 
 Excel Translator 提供了一个命令行接口，方便用户直接从终端翻译Excel文件。
@@ -172,6 +205,8 @@ python main.py -i input.xlsx -o output_dir -l english
 - `--openai-model`: OpenAI模型（可选，默认为 "gpt-4o"）
 - `--openai-base-url`: OpenAI API基础URL（可选）
 
+注意：Excel Translator默认启用批量翻译功能，可以显著提高翻译效率并减少API调用次数。批量翻译会智能地将多个文本单元组合成批次进行翻译，同时保持上下文信息。目前命令行接口不提供直接控制批量翻译的参数，但可以通过配置文件中的`BATCH_TRANSLATION_ENABLED`参数来控制（请参见配置部分）。
+
 #### 示例
 
 1. 基本翻译：
@@ -192,6 +227,12 @@ python main.py -i input.xlsx -o output_dir -l english
 4. 指定OpenAI API密钥和模型：
    ```bash
    python main.py -i docs/案例5.xlsx -o output -l english --openai-api-key your_api_key_here --openai-model gpt-4o
+   ```
+
+5. 使用配置文件控制批量翻译（默认启用）：
+   ```bash
+   # 在.env文件中设置 BATCH_TRANSLATION_ENABLED=false 可以禁用批量翻译
+   python main.py -i docs/案例5.xlsx -o output -l english
    ```
 
 ## 贡献
