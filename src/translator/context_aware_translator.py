@@ -12,6 +12,7 @@ from config.settings import settings
 from config.logging_config import get_logger
 from translator.data_type_config import DataTypeConfig
 from tqdm.asyncio import tqdm_asyncio
+from translator.batch_translator import BatchTranslator
 
 
 logger = get_logger(__name__)
@@ -219,7 +220,7 @@ class SmartBatcher:
 class ContextAwareTranslator:
     """上下文感知翻译器."""
 
-    def __init__(self):
+    def __init__(self, batch_translation_enabled: bool = True):
         self.client = AsyncOpenAI(
             api_key=settings.openai_api_key,
             base_url=settings.openai_base_url if settings.openai_base_url else None,
@@ -232,12 +233,37 @@ class ContextAwareTranslator:
         self.batcher = SmartBatcher()
         self.translation_cache = {}
         self.context_cache = {}
+        self.batch_translation_enabled = batch_translation_enabled
+        # 批量翻译功能
+        if batch_translation_enabled:
+            self.max_tokens = settings.max_tokens
+            self.token_buffer = settings.token_buffer
+            self.batch_translator = BatchTranslator(
+                model=self.model,
+                target_language=self.target_language,
+                max_tokens=self.max_tokens,
+                token_buffer=self.token_buffer,
+            )
 
     async def translate_dataframe(
         self, df: pd.DataFrame, target_lang: str = None
     ) -> pd.DataFrame:
         """翻译整个DataFrame."""
         target = target_lang or self.target_language
+
+        # 如果启用了批量翻译，使用新的批量翻译方法
+        if self.batch_translation_enabled:
+            try:
+                logger.info("Using batch translation mode")
+                return await self.batch_translator.translate_dataframe_batch(df, target)
+            except Exception as e:
+                logger.warning(
+                    f"Batch translation failed, falling back to legacy method: {e}"
+                )
+                # 如果批量翻译失败，回退到逐行翻译
+                pass
+
+        # 使用现有的逐行翻译方法
         structure = self.analyzer.analyze_table_structure(df)
         logger.info(f"Detected domain: {structure['domain']}")
         translated_columns = []
@@ -391,10 +417,17 @@ class ContextAwareTranslator:
 
     def get_cache_stats(self) -> Dict[str, int]:
         """获取缓存统计."""
-        return {
+        stats = {
             "translation_cache_size": len(self.translation_cache),
             "context_cache_size": len(self.context_cache),
         }
+
+        # 添加批量翻译统计信息
+        if self.batch_translation_enabled and hasattr(self, "batch_translator"):
+            batch_stats = self.batch_translator.get_stats()
+            stats["batch_translation_stats"] = batch_stats
+
+        return stats
 
     async def _translate_single_text(
         self, text: str, target_lang: str, domain: str

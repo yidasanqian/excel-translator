@@ -13,14 +13,25 @@ logger = get_logger(__name__)
 class IntegratedTranslator:
     """集成翻译器，提供统一的翻译接口."""
 
-    def __init__(self, use_context_aware: bool = True, preserve_format: bool = False):
+    def __init__(
+        self,
+        use_context_aware: bool = True,
+        preserve_format: bool = True,
+        batch_translation_enabled: bool = True,
+    ):
+        """
+        初始化集成翻译器.
+        :param use_context_aware: 是否使用上下文感知翻译
+        :param preserve_format: 是否保留Excel格式
+        :param batch_translation_enabled: 是否启用批量翻译
+        """
         self.use_context_aware = use_context_aware
         self.preserve_format = preserve_format
         self.excel_handler = (
             EnhancedExcelHandler() if preserve_format else ExcelHandler()
         )
         if use_context_aware:
-            self.translator = ContextAwareTranslator()
+            self.translator = ContextAwareTranslator(batch_translation_enabled)
         else:
             from translator.cell_translator import ExcelCellTranslator
 

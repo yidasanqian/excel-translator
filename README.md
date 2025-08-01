@@ -14,6 +14,7 @@ Excel Translator是一个强大的工具，专门用于翻译Excel电子表格�
 ## 特性
 
 - **上下文感知翻译**：利用表格结构、列类型和专业领域信息进行智能翻译，确保翻译结果符合上下文语境
+- **批量翻译**：支持将多行数据合并为单个翻译请求，显著提高翻译效率并减少API调用次数
 - **多Sheet支持**：支持翻译包含多个工作表的Excel文件，保持工作表间的引用关系
 - **格式保留**：可选择保留原始Excel文件的格式，包括合并单元格、字体样式、边框等
 - **术语管理**：内置专业领域术语库（机械、电气等），确保专业术语翻译的一致性
@@ -83,6 +84,10 @@ pip install -e .
    MAX_BATCH_SIZE=50
    REQUEST_TIMEOUT=30
    PRESERVE_FORMAT=true
+   # 批量翻译设置
+   BATCH_TRANSLATION_ENABLED=true
+   MAX_TOKENS=8192
+   TOKEN_BUFFER=1000
    
    # 文件设置
    UPLOAD_DIR=uploads
@@ -106,6 +111,9 @@ pip install -e .
 - `MAX_BATCH_SIZE`: 批量翻译的最大单元数，默认为 `50`
 - `REQUEST_TIMEOUT`: API请求超时时间（秒），默认为 `30`
 - `PRESERVE_FORMAT`: 是否保留原始Excel格式，默认为 `true`
+- `BATCH_TRANSLATION_ENABLED`: 是否启用批量翻译，默认为 `true`
+- `MAX_TOKENS`: 最大输出token数量，默认为 `8192`
+- `TOKEN_BUFFER`: token缓冲区大小，默认为 `1000`
 - `UPLOAD_DIR`: 上传文件目录，默认为 `uploads`
 - `OUTPUT_DIR`: 输出文件目录，默认为 `output`
 - `MAX_FILE_SIZE`: 最大文件大小（字节），默认为 `10485760`（10MB）
