@@ -2,6 +2,7 @@
 
 import pandas as pd
 from typing import Dict
+from translator.context_aware_batch_translator import ContextAwareBatchTranslator
 from translator.context_aware_translator import ContextAwareTranslator
 from translator.excel_handler import ExcelHandler
 from translator.enhanced_excel_handler import EnhancedExcelHandler
@@ -15,12 +16,14 @@ class IntegratedTranslator:
 
     def __init__(
         self,
+        model: str,
         use_context_aware: bool = True,
         preserve_format: bool = True,
         batch_translation_enabled: bool = True,
     ):
         """
         初始化集成翻译器.
+        :param model: 模型id
         :param use_context_aware: 是否使用上下文感知翻译
         :param preserve_format: 是否保留Excel格式
         :param batch_translation_enabled: 是否启用批量翻译
@@ -31,16 +34,36 @@ class IntegratedTranslator:
             EnhancedExcelHandler() if preserve_format else ExcelHandler()
         )
         if use_context_aware:
-            self.translator = ContextAwareTranslator(batch_translation_enabled)
+            if batch_translation_enabled:
+                self.translator = ContextAwareBatchTranslator(model)
+            else:
+                self.translator = ContextAwareTranslator(model)
         else:
             from translator.cell_translator import ExcelCellTranslator
 
-            self.translator = ExcelCellTranslator()
+            self.translator = ExcelCellTranslator(model)
 
     async def translate_excel_file(
-        self, file_path: str, output_path: str = None, target_language: str = "english"
+        self,
+        file_path: str,
+        output_path: str,
+        source_language: str,
+        target_language: str,
+        domain_terms: Dict[str, Dict[str, str]] = None,
     ) -> str:
-        """翻译Excel文件."""
+        """
+        翻译Excel文件.
+
+        Args:
+            file_path: 输入文件路径
+            output_path: 输出文件路径
+            source_language: 源语言
+            target_language: 目标语言
+            domain_terms: 领域术语字典，格式为 {domain: {term: translation}}
+
+        Returns:
+            翻译后的文件路径
+        """
         try:
             if self.preserve_format:
                 excel_data_with_info = self.excel_handler.read_excel_with_merge_info(
@@ -59,14 +82,14 @@ class IntegratedTranslator:
                 logger.info(f"Translating sheet: {sheet_name}")
                 if self.use_context_aware:
                     translated_df = await self.translator.translate_dataframe(
-                        df, target_language
+                        df, source_language, target_language, domain_terms
                     )
                 else:
                     texts = self.excel_handler.extract_text_for_translation(
                         {sheet_name: df}
                     )[sheet_name]
                     translations = await self.translator.translate_excel_data(
-                        {sheet_name: texts}, target_language
+                        {sheet_name: texts}, source_language, target_language
                     )
                     translated_df = self.excel_handler.apply_translations(
                         {sheet_name: df}, translations
@@ -94,22 +117,37 @@ class IntegratedTranslator:
             raise
 
     async def translate_excel_data(
-        self, data: Dict[str, pd.DataFrame], target_language: str = "english"
+        self,
+        data: Dict[str, pd.DataFrame],
+        source_language: str,
+        target_language: str = "english",
+        domain_terms: Dict[str, Dict[str, str]] = None,
     ) -> Dict[str, pd.DataFrame]:
-        """翻译Excel数据."""
+        """
+        翻译Excel数据.
+
+        Args:
+            data: 要翻译的DataFrame字典
+            source_language: 源语言
+            target_language: 目标语言
+            domain_terms: 领域术语字典，格式为 {domain: {term: translation}}
+
+        Returns:
+            翻译后的DataFrame字典
+        """
         translated_data = {}
         for sheet_name, df in data.items():
             logger.info(f"Translating sheet: {sheet_name}")
             if self.use_context_aware:
                 translated_df = await self.translator.translate_dataframe(
-                    df, target_language
+                    df, source_language, target_language, domain_terms
                 )
             else:
                 texts = self.excel_handler.extract_text_for_translation(
                     {sheet_name: df}
                 )[sheet_name]
                 translations = await self.translator.translate_excel_data(
-                    {sheet_name: texts}, target_language
+                    {sheet_name: texts}, source_language, target_language
                 )
                 translated_df = self.excel_handler.apply_translations(
                     {sheet_name: df}, translations
@@ -128,30 +166,36 @@ class IntegratedTranslator:
 
 
 async def translate_excel_with_context(
+    model: str,
     file_path: str,
-    output_path: str = None,
-    target_language: str = "english",
+    output_path: str,
+    source_language: str,
+    target_language: str,
     preserve_format: bool = True,
+    domain_terms: Dict[str, Dict[str, str]] = None,
 ) -> str:
     """使用上下文感知翻译翻译Excel文件."""
     translator = IntegratedTranslator(
-        use_context_aware=True, preserve_format=preserve_format
+        model=model, use_context_aware=True, preserve_format=preserve_format
     )
     return await translator.translate_excel_file(
-        file_path, output_path, target_language
+        file_path, output_path, source_language, target_language, domain_terms
     )
 
 
 async def translate_excel_without_context(
+    model: str,
     file_path: str,
-    output_path: str = None,
-    target_language: str = "english",
+    output_path: str,
+    source_language: str,
+    target_language: str,
     preserve_format: bool = True,
+    domain_terms: Dict[str, Dict[str, str]] = None,
 ) -> str:
     """使用传统翻译方法翻译Excel文件."""
     translator = IntegratedTranslator(
-        use_context_aware=False, preserve_format=preserve_format
+        model=model, use_context_aware=False, preserve_format=preserve_format
     )
     return await translator.translate_excel_file(
-        file_path, output_path, target_language
+        file_path, output_path, source_language, target_language, domain_terms
     )

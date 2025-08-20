@@ -1,11 +1,11 @@
 import unittest
 import pandas as pd
-from translator.batch_translator import BatchTranslator
+from translator.context_aware_batch_translator import ContextAwareBatchTranslator
 
 
 class TestUnnamedColumnHandling(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
-        self.translator = BatchTranslator()
+        self.translator = ContextAwareBatchTranslator()
 
     async def test_translate_column_names_with_unnamed_columns(self):
         # 创建一个包含"Unnamed:"列名的DataFrame

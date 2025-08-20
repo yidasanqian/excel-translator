@@ -25,10 +25,15 @@ def create_parser():
     parser.add_argument("-o", "--output", help="输出目录路径（默认为输入文件所在目录）")
 
     parser.add_argument(
-        "-l",
-        "--language",
-        default=settings.target_language,
-        help=f"目标语言（默认: {settings.target_language}）",
+        "-s",
+        "--source-language",
+        help="源语言",
+    )
+
+    parser.add_argument(
+        "-t",
+        "--target-language",
+        help="目标语言",
     )
 
     parser.add_argument(
@@ -84,7 +89,9 @@ async def translate_file(args):
 
     # 创建翻译器实例
     translator = IntegratedTranslator(
-        use_context_aware=args.context_aware, preserve_format=args.preserve_format
+        model=args.openai_model,
+        use_context_aware=args.context_aware,
+        preserve_format=args.preserve_format,
     )
 
     # 确定输出路径
@@ -95,14 +102,15 @@ async def translate_file(args):
 
     # 执行翻译
     print(f"开始翻译文件: {args.input}")
-    print(f"目标语言: {args.language}")
+    print(f"源语言: {args.source_language}")
+    print(f"目标语言: {args.target_language}")
     print(f"使用上下文感知翻译: {args.context_aware}")
     print(f"保留格式: {args.preserve_format}")
     print(f"输出路径: {output_path}")
 
     try:
         result_path = await translator.translate_excel_file(
-            args.input, output_path, args.language
+            args.input, output_path, args.source_language, args.target_language
         )
         print(f"翻译完成，结果保存在: {result_path}")
     except Exception as e:

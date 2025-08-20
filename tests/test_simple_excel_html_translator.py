@@ -1,22 +1,20 @@
 import unittest
 import os
-from translator.simple_excel_html_translator import (
-    SimpleExcelHTMLTranslator,
-    simple_excel_html_translation_workflow,
-)
+from translator.simple_excel_html_translator import SimpleExcelHTMLTranslator
 
 
 class TestSimpleExcelHTMLTranslator(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
-        self.translator = SimpleExcelHTMLTranslator()
-        self.test_file = "docs/案例12345.xlsx"
+        model = "azure-openai/gpt-4o"
+        self.translator = SimpleExcelHTMLTranslator(model)
+        self.test_file = "docs/案例5.xlsx"
         self.output_path = "output"
 
         # 确保输出目录存在
         if not os.path.exists(self.output_path):
             os.makedirs(self.output_path)
 
-    async def test_simple_excel_html_translation_workflow(self):
+    async def test_translate_excel_to_excel(self):
         """测试简化版的Excel到Excel翻译工作流程"""
         # 检查测试文件是否存在
         if not os.path.exists(self.test_file):
@@ -29,8 +27,8 @@ class TestSimpleExcelHTMLTranslator(unittest.IsolatedAsyncioTestCase):
         )
 
         # 执行翻译工作流程
-        result_file = await simple_excel_html_translation_workflow(
-            self.test_file, output_file, target_language="english"
+        result_file = await self.translator.translate_excel_to_excel(
+            self.test_file, output_file, "chinese", "english"
         )
 
         # 验证结果
@@ -45,9 +43,7 @@ if __name__ == "__main__":
     suite = unittest.TestSuite()
 
     # 添加测试用例
-    suite.addTest(
-        TestSimpleExcelHTMLTranslator("test_simple_excel_html_translation_workflow")
-    )
+    suite.addTest(TestSimpleExcelHTMLTranslator("test_translate_excel_to_excel"))
 
     # 运行测试
     runner = unittest.TextTestRunner(verbosity=2)

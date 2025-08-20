@@ -11,7 +11,6 @@ class Settings(BaseSettings):
     openai_api_key: str = Field(..., env="OPENAI_API_KEY")
     openai_model: str = Field(default="gpt-4o", env="OPENAI_MODEL")
     openai_base_url: Optional[str] = Field(default=None, env="OPENAI_BASE_URL")
-    target_language: str = Field(default="english", env="TARGET_LANGUAGE")
     max_batch_size: int = Field(default=50, env="MAX_BATCH_SIZE", ge=1, le=100)
     request_timeout: int = Field(default=30, env="REQUEST_TIMEOUT", ge=1, le=300)
     preserve_format: bool = Field(default=True, env="PRESERVE_FORMAT")

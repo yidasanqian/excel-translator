@@ -1,7 +1,7 @@
 """上下文感知的Excel翻译服务."""
 
 import pandas as pd
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Any
 import asyncio
 from dataclasses import dataclass
 from collections import defaultdict
@@ -12,7 +12,7 @@ from config.settings import settings
 from config.logging_config import get_logger
 from translator.data_type_config import DataTypeConfig
 from tqdm.asyncio import tqdm_asyncio
-from translator.batch_translator import BatchTranslator
+from translator.terminology_manager import TerminologyManager
 
 
 logger = get_logger(__name__)
@@ -91,65 +91,6 @@ class TableStructureAnalyzer:
         return dict(patterns)
 
 
-class TerminologyManager:
-    """术语管理器."""
-
-    def __init__(self):
-        self.terminology_cache = {}
-        self.domain_terms = {
-            "mechanical": {
-                "发动机": "engine",
-                "液压系统": "hydraulic system",
-                "制动系统": "braking system",
-                "转向系统": "steering system",
-                "故障": "malfunction",
-                "异常": "abnormal",
-                "检查": "inspect",
-                "更换": "replace",
-            },
-            "electrical": {
-                "电路": "circuit",
-                "电压": "voltage",
-                "电流": "current",
-                "电池": "battery",
-                "电机": "motor",
-                "短路": "short circuit",
-                "断路": "open circuit",
-            },
-        }
-
-    def get_term_translation(self, text: str, domain: str) -> Optional[str]:
-        """获取术语翻译."""
-        if not text or not text.strip():
-            return None
-        text_clean = str(text).strip()
-        if all(ord(c) < 128 for c in text_clean):
-            return text_clean
-        if domain in self.domain_terms and text_clean in self.domain_terms[domain]:
-            return self.domain_terms[domain][text_clean]
-        return None
-
-    def get_relevant_terms(self, text: str, domain: str) -> Dict[str, str]:
-        """获取与文本相关的术语翻译映射."""
-        if not text or not text.strip():
-            return {}
-        text_clean = str(text).strip()
-        relevant_terms = {}
-        if all(ord(c) < 128 for c in text_clean):
-            return {}
-        if domain in self.domain_terms:
-            for cn_term, en_term in self.domain_terms[domain].items():
-                if cn_term in text_clean:
-                    relevant_terms[cn_term] = en_term
-        return relevant_terms
-
-    def add_term(self, original: str, translated: str, domain: str):
-        """添加新术语."""
-        if domain not in self.domain_terms:
-            self.domain_terms[domain] = {}
-        self.domain_terms[domain][original] = translated
-
-
 class SmartBatcher:
     """智能分批器."""
 
@@ -220,48 +161,43 @@ class SmartBatcher:
 class ContextAwareTranslator:
     """上下文感知翻译器."""
 
-    def __init__(self, batch_translation_enabled: bool = True):
+    def __init__(
+        self,
+        model: str,
+    ):
         self.client = AsyncOpenAI(
             api_key=settings.openai_api_key,
-            base_url=settings.openai_base_url if settings.openai_base_url else None,
+            base_url=settings.openai_base_url,
+            timeout=settings.request_timeout,
         )
-        self.model = settings.openai_model
-        self.target_language = settings.target_language
-        self.timeout = settings.request_timeout
+        self.model = model
         self.analyzer = TableStructureAnalyzer()
-        self.terminology = TerminologyManager()
         self.batcher = SmartBatcher()
         self.translation_cache = {}
         self.context_cache = {}
-        self.batch_translation_enabled = batch_translation_enabled
-        # 批量翻译功能
-        if batch_translation_enabled:
-            self.max_tokens = settings.max_tokens
-            self.token_buffer = settings.token_buffer
-            self.batch_translator = BatchTranslator(
-                model=self.model,
-                target_language=self.target_language,
-                max_tokens=self.max_tokens,
-                token_buffer=self.token_buffer,
-            )
 
     async def translate_dataframe(
-        self, df: pd.DataFrame, target_lang: str = None
+        self,
+        df: pd.DataFrame,
+        source_lang: str,
+        target_lang: str = None,
+        domain_terms: Dict[str, Dict[str, str]] = None,
     ) -> pd.DataFrame:
-        """翻译整个DataFrame."""
-        target = target_lang or self.target_language
+        """
+        翻译整个DataFrame.
 
-        # 如果启用了批量翻译，使用新的批量翻译方法
-        if self.batch_translation_enabled:
-            try:
-                logger.info("Using batch translation mode")
-                return await self.batch_translator.translate_dataframe_batch(df, target)
-            except Exception as e:
-                logger.warning(
-                    f"Batch translation failed, falling back to legacy method: {e}"
-                )
-                # 如果批量翻译失败，回退到逐行翻译
-                pass
+        Args:
+            df: 要翻译的DataFrame
+            source_lang: 源语言
+            target_lang: 目标语言
+            domain_terms: 领域术语字典，格式为 {domain: {term: translation}}
+
+        Returns:
+            翻译后的DataFrame
+        """
+
+        # 实例化术语管理器
+        self.terminology_manager = TerminologyManager(domain_terms)
 
         # 使用现有的逐行翻译方法
         structure = self.analyzer.analyze_table_structure(df)
@@ -282,7 +218,7 @@ class ContextAwareTranslator:
                     not all(ord(c) < 128 for c in col_name_str)
                 ):
                     translated_col = await self._translate_single_text(
-                        col_name_str, target, structure["domain"]
+                        col_name_str, source_lang, target_lang, structure["domain"]
                     )
                     translated_columns.append(translated_col)
                     column_name_mapping[col_name] = translated_col
@@ -298,7 +234,7 @@ class ContextAwareTranslator:
         translation_map = {}
         for batch in tqdm_asyncio(batches, desc="翻译中", unit="批次"):
             translated_batch = await self._translate_batch(
-                batch, target, structure["domain"]
+                batch, source_lang, target_lang, structure["domain"]
             )
             for unit, translated_text in zip(batch, translated_batch):
                 translation_map[unit.row_id, unit.col_name] = translated_text
@@ -311,7 +247,11 @@ class ContextAwareTranslator:
         return translated_df
 
     async def _translate_batch(
-        self, batch: List[TranslationUnit], target_lang: str, domain: str
+        self,
+        batch: List[TranslationUnit],
+        source_lang: str,
+        target_lang: str,
+        domain: str,
     ) -> List[str]:
         """翻译批次."""
         tasks = []
@@ -334,7 +274,7 @@ class ContextAwareTranslator:
                 else:
                     tasks.append(
                         asyncio.create_task(
-                            self._translate_with_context(unit, target_lang)
+                            self._translate_with_context(unit, source_lang, target_lang)
                         )
                     )
         results = await asyncio.gather(*tasks)
@@ -347,15 +287,17 @@ class ContextAwareTranslator:
         return self.translation_cache[cache_key]
 
     async def _translate_with_context(
-        self, unit: TranslationUnit, target_lang: str
+        self, unit: TranslationUnit, source_lang: str, target_lang: str
     ) -> str:
         """使用上下文进行翻译."""
         max_retries = 3
         for attempt in range(max_retries):
             try:
-                context_prompt = self._build_context_prompt(unit, target_lang)
+                context_prompt = self._build_context_prompt(
+                    unit, source_lang, target_lang
+                )
                 logger.debug(
-                    f"Translating text with context: '{unit.original_text}' (attempt {attempt + 1})"
+                    f"Translating text with context: '{unit.original_text}' from {source_lang} to {target_lang} (attempt {attempt + 1})"
                 )
                 response = await self.client.chat.completions.create(
                     model=self.model,
@@ -367,7 +309,6 @@ class ContextAwareTranslator:
                         {"role": "user", "content": context_prompt},
                     ],
                     max_tokens=500,
-                    timeout=self.timeout,
                 )
                 translated = response.choices[0].message.content.strip()
                 logger.debug(f"Translation result: '{translated}'")
@@ -387,7 +328,9 @@ class ContextAwareTranslator:
                     await asyncio.sleep(1)
         return None
 
-    def _build_context_prompt(self, unit: TranslationUnit, target_lang: str) -> str:
+    def _build_context_prompt(
+        self, unit: TranslationUnit, source_lang: str, target_lang: str
+    ) -> str:
         """构建上下文翻译提示."""
         context = unit.context
         row_context_str = ", ".join(
@@ -407,7 +350,7 @@ class ContextAwareTranslator:
                 [f"- {cn}: {en}" for cn, en in relevant_terms.items()]
             )
             terms_prompt = f"\n\nRelevant terminology:\n{terms_str}"
-        prompt = f"Translate the following Chinese text to complete {target_lang}. \nDo not mix languages.\nContext:\n- Column: {col_name} ({col_type})\n- Row context: {row_context_str}\n- Domain: {domain}{terms_prompt}\nChinese text: {unit.original_text}\nRequirements:\n1. Translate the entire text to {target_lang}, do not leave any Chinese characters\n2. Use the provided terminology consistently\n3. Maintain the original meaning and context\n4. Return only the translated text without any explanations\n5. Ensure complete translation, no partial translation allowed"
+        prompt = f"Translate the following {source_lang} text to complete {target_lang}. \nDo not mix languages.\nContext:\n- Column: {col_name} ({col_type})\n- Row context: {row_context_str}\n- Domain: {domain}{terms_prompt}\n{source_lang} text: {unit.original_text}\nRequirements:\n1. Translate the entire text to {target_lang}, do not leave any {source_lang} characters\n2. Use the provided terminology consistently\n3. Maintain the original meaning and context\n4. Return only the translated text without any explanations\n5. Ensure complete translation, no partial translation allowed"
         return prompt
 
     def clear_cache(self):
@@ -430,7 +373,7 @@ class ContextAwareTranslator:
         return stats
 
     async def _translate_single_text(
-        self, text: str, target_lang: str, domain: str
+        self, text: str, source_lang: str, target_lang: str, domain: str
     ) -> str:
         """翻译单个文本."""
         max_retries = 3
@@ -442,9 +385,9 @@ class ContextAwareTranslator:
                         f"Term translation found: '{text}' -> '{term_translation}'"
                     )
                     return term_translation
-                prompt = f"Translate the following Chinese text to complete {target_lang}.\nDo not mix languages.\nContext:\n- Domain: {domain}\nChinese text: {text}\nRequirements:\n1. Translate the entire text to {target_lang}, do not leave any Chinese characters\n2. Maintain the original meaning and context\n3. Return only the translated text without any explanations\n4. Ensure complete translation, no partial translation allowed"
+                prompt = f"Translate the following {source_lang} text to complete {target_lang}.\nDo not mix languages.\nContext:\n- Domain: {domain}\n{source_lang} text: {text}\nRequirements:\n1. Translate the entire text to {target_lang}, do not leave any {source_lang} characters\n2. Maintain the original meaning and context\n3. Return only the translated text without any explanations\n4. Ensure complete translation, no partial translation allowed"
                 logger.debug(
-                    f"Translating single text: '{text}' in domain '{domain}' (attempt {attempt + 1})"
+                    f"Translating single text: '{text}' from {source_lang} to {target_lang} in domain '{domain}' (attempt {attempt + 1})"
                 )
                 response = await self.client.chat.completions.create(
                     model=self.model,
@@ -456,7 +399,6 @@ class ContextAwareTranslator:
                         {"role": "user", "content": prompt},
                     ],
                     max_tokens=500,
-                    timeout=self.timeout,
                 )
                 translated = response.choices[0].message.content.strip()
                 logger.debug(f"Single text translation result: '{translated}'")

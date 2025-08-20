@@ -22,13 +22,14 @@ def needs_translation(text: str, target_language: str) -> bool:
         return False
 
     # 如果目标语言是英语
-    if target_language.lower() in ["english", "en", "en-us"]:
+    if target_language.lower() in ["english", "en", "en-US"]:
         # 检查是否为纯英文、纯数字或英文与数字混合
         if _is_english_mixed(text):
             return False
 
     # 如果目标语言是中文
-    elif target_language.lower() in ["chinese", "zh", "zh-cn"]:
+
+    elif target_language.lower() in ["chinese", "zh", "zh-CN"]:
         # 检查是否为纯中文、纯数字或中文与数字混合
         if _is_chinese_mixed(text):
             return False

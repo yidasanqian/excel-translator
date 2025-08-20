@@ -13,15 +13,14 @@ logger = get_logger(__name__)
 class ExcelCellTranslator:
     """OpenAI-based translation service."""
 
-    def __init__(self):
+    def __init__(self, model):
         self.client = AsyncOpenAI(
             api_key=settings.openai_api_key,
-            base_url=settings.openai_base_url if settings.openai_base_url else None,
+            base_url=settings.openai_base_url,
+            timeout=settings.request_timeout,
         )
-        self.model = settings.openai_model
-        self.target_language = settings.target_language
+        self.model = model
         self.max_batch_size = settings.max_batch_size
-        self.timeout = settings.request_timeout
 
     async def detect_language(self, text: str) -> str:
         """Detect the source language of the text."""
@@ -37,7 +36,6 @@ class ExcelCellTranslator:
                     {"role": "user", "content": prompt},
                 ],
                 max_tokens=10,
-                timeout=self.timeout,
             )
             detected = response.choices[0].message.content.strip().lower()
             return detected
@@ -45,13 +43,14 @@ class ExcelCellTranslator:
             logger.error(f"Language detection failed: {e}")
             return "chinese"
 
-    async def translate_text(self, text: str, target_lang: str = None) -> str:
+    async def translate_text(
+        self, text: str, source_lang: str, target_lang: str = None
+    ) -> str:
         """Translate single text string."""
         if not text or not text.strip():
             return text
-        target = target_lang or self.target_language
+        target = target_lang
         try:
-            source_lang = await self.detect_language(text)
             if (
                 source_lang == "chinese"
                 and target == "chinese"
@@ -69,7 +68,6 @@ class ExcelCellTranslator:
                     {"role": "user", "content": prompt},
                 ],
                 max_tokens=1000,
-                timeout=self.timeout,
             )
             translated = response.choices[0].message.content.strip()
             return translated
@@ -78,29 +76,31 @@ class ExcelCellTranslator:
             return text
 
     async def translate_batch(
-        self, texts: List[str], target_lang: str = None
+        self, texts: List[str], source_lang: str, target_lang: str = None
     ) -> List[str]:
         """Translate a batch of texts efficiently."""
         if not texts:
             return []
-        target = target_lang or self.target_language
+        target = target_lang
         batches = [
             texts[i : i + self.max_batch_size]
             for i in range(0, len(texts), self.max_batch_size)
         ]
         results = []
         for batch in tqdm_asyncio(batches, desc="翻译中", unit="批次"):
-            batch_results = await self._translate_batch_async(batch, target)
+            batch_results = await self._translate_batch_async(
+                batch, source_lang, target
+            )
             results.extend(batch_results)
         return results
 
     async def _translate_batch_async(
-        self, texts: List[str], target_lang: str
+        self, texts: List[str], source_lang: str, target_lang: str
     ) -> List[str]:
         """Translate a single batch asynchronously."""
         if not texts:
             return []
-        tasks = [self.translate_text(text, target_lang) for text in texts]
+        tasks = [self.translate_text(text, source_lang, target_lang) for text in texts]
         results = await asyncio.gather(*tasks, return_exceptions=True)
         final_results = []
         for i, result in enumerate(results):
@@ -112,19 +112,20 @@ class ExcelCellTranslator:
         return final_results
 
     async def translate_excel_data(
-        self, data: Dict[str, List[str]], target_lang: str = None
+        self, data: Dict[str, List[str]], source_lang: str, target_lang: str = None
     ) -> Dict[str, Dict[str, str]]:
         """
         Translate Excel data organized by sheets.
 
         Args:
             data: Dict with sheet names as keys and lists of texts as values
+            source_lang: Source language for translation
             target_lang: Target language for translation
 
         Returns:
             Dict with translations organized by sheet and original text
         """
-        target = target_lang or self.target_language
+        target = target_lang
         translations = {}
         for sheet_name, texts in data.items():
             if not texts:
@@ -132,7 +133,9 @@ class ExcelCellTranslator:
                 continue
             unique_texts = list(set(texts))
             print(f"\n正在翻译工作表: {sheet_name}")
-            translated_texts = await self.translate_batch(unique_texts, target)
+            translated_texts = await self.translate_batch(
+                unique_texts, source_lang, target
+            )
             translation_map = dict(zip(unique_texts, translated_texts))
             full_translations = {
                 text: translation_map.get(text, text) for text in texts

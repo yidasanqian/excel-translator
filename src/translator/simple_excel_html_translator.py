@@ -73,17 +73,15 @@ class SimpleExcelHTMLTranslator:
     def __init__(
         self,
         model: str = None,
-        target_language: str = None,
         max_tokens: int = None,
         token_buffer: int = 1000,
     ):
         self.client = AsyncOpenAI(
             api_key=settings.openai_api_key,
-            base_url=settings.openai_base_url if settings.openai_base_url else None,
+            base_url=settings.openai_base_url,
+            timeout=settings.request_timeout,
         )
-        self.model = model or settings.openai_model
-        self.target_language = target_language or settings.target_language
-        self.timeout = settings.request_timeout
+        self.model = model
         self.max_tokens = max_tokens or 8192
         self.token_buffer = token_buffer
 
@@ -260,7 +258,7 @@ Translated texts in {target_lang}:
 
         return translations
 
-    async def translate_batch_with_context(
+    async def _translate_batch_with_context(
         self,
         batch_id: int,
         total_batches: int,
@@ -304,7 +302,6 @@ Translated texts in {target_lang}:
                         {"role": "user", "content": prompt},
                     ],
                     max_tokens=min(4096, self.max_tokens // 2),
-                    timeout=self.timeout,
                 )
 
                 translated_content = response.choices[0].message.content.strip()
@@ -353,7 +350,6 @@ Translated texts in {target_lang}:
                         {"role": "user", "content": prompt},
                     ],
                     max_tokens=500,
-                    timeout=self.timeout,
                 )
                 translated = response.choices[0].message.content.strip()
                 translations.append(translated)
@@ -364,7 +360,9 @@ Translated texts in {target_lang}:
                 translations.append(text)  # 如果翻译失败，返回原文本
         return translations
 
-    async def translate_html_content(self, html_content: str, target_lang: str) -> str:
+    async def translate_html_content(
+        self, html_content: str, source_lang: str, target_lang: str
+    ) -> str:
         """翻译HTML内容."""
         try:
             # 使用BeautifulSoup解析HTML以提取文本内容进行翻译
@@ -427,7 +425,7 @@ Translated texts in {target_lang}:
 
             # 使用 tqdm 进度条显示翻译进度
             batch_tasks = [
-                self.translate_batch_with_context(
+                self._translate_batch_with_context(
                     i + 1, total_batches, batch, target_lang
                 )
                 for i, batch in enumerate(batches)
@@ -459,12 +457,17 @@ Translated texts in {target_lang}:
             return html_content
 
     async def translate_excel_to_excel(
-        self, input_excel: str, output_excel: str = None, target_lang: str = None
+        self,
+        input_excel: str,
+        output_excel: str,
+        source_lang: str,
+        target_lang: str,
     ) -> str:
         """
         将Excel文件翻译为另一种语言的Excel文件.
 
         Args:
+            model: 模型id
             input_excel: 输入Excel文件路径
             output_excel: 输出Excel文件路径
             target_lang: 目标语言
@@ -472,7 +475,7 @@ Translated texts in {target_lang}:
         Returns:
             翻译后的Excel文件路径
         """
-        target = target_lang or self.target_language
+
         # 确保输出目录存在
         output_path = "output"
         if not os.path.exists(output_path):
@@ -499,7 +502,7 @@ Translated texts in {target_lang}:
             html_content = f.read()
 
         translated_html_content = await self.translate_html_content(
-            html_content, target
+            html_content, source_lang, target_lang
         )
 
         # 保存翻译后的HTML
@@ -515,27 +518,3 @@ Translated texts in {target_lang}:
 
         logger.info(f"Translation completed successfully. Output file: {output_excel}")
         return output_excel
-
-
-# 保持向后兼容的函数接口
-async def simple_excel_html_translation_workflow(
-    input_excel, output_excel=None, target_language=None
-):
-    """
-    简化版的Excel到Excel翻译工作流程
-    """
-    # 确保输出目录存在
-    output_path = "output"
-    if not os.path.exists(output_path):
-        os.makedirs(output_path)
-
-    base_name = os.path.splitext(os.path.basename(input_excel))[0]
-    if output_excel is None:
-        output_excel = os.path.join(output_path, f"{base_name}_translated.xlsx")
-
-    # 使用简化版的翻译器
-    translator = SimpleExcelHTMLTranslator(target_language=target_language)
-    result_file = await translator.translate_excel_to_excel(input_excel, output_excel)
-
-    print(f"Translation completed. File saved as: {result_file}")
-    return result_file

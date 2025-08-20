@@ -1,7 +1,7 @@
 """批量翻译器 - 支持上下文感知的批量Excel翻译."""
 
 import pandas as pd
-from typing import Dict, List, Any, Tuple
+from typing import Dict, List, Any, Tuple, Optional
 import asyncio
 import json
 from dataclasses import dataclass
@@ -12,6 +12,7 @@ from config.settings import settings
 from config.logging_config import get_logger
 from tqdm.asyncio import tqdm_asyncio
 from translator.translation_filter import needs_translation
+from translator.terminology_manager import TerminologyManager
 
 logger = get_logger(__name__)
 
@@ -66,7 +67,7 @@ class TokenManager:
         return sum(self.count_tokens_in_list(texts))
 
 
-class BatchContextBuilder:
+class ContextAwareBatchContextBuilder:
     """批量翻译上下文构建器."""
 
     def __init__(self):
@@ -108,53 +109,61 @@ class BatchContextBuilder:
         }
 
 
-class BatchTranslator:
+class ContextAwareBatchTranslator:
     """批量翻译器，支持上下文感知的批量Excel翻译."""
 
     def __init__(
         self,
-        model: str = None,
-        target_language: str = None,
+        model: str,
         max_tokens: int = 8192,
         token_buffer: int = 1000,
     ):
         self.client = AsyncOpenAI(
             api_key=settings.openai_api_key,
-            base_url=settings.openai_base_url if settings.openai_base_url else None,
+            base_url=settings.openai_base_url,
+            timeout=settings.request_timeout,
         )
-        self.model = model or settings.openai_model
-        self.target_language = target_language or settings.target_language
-        self.timeout = settings.request_timeout
+        self.model = model
         self.max_tokens = max_tokens
         self.token_buffer = token_buffer
 
         # 初始化组件
         self.token_manager = TokenManager(self.model)
-        self.context_builder = BatchContextBuilder()
+        self.context_builder = ContextAwareBatchContextBuilder()
 
         # 统计信息
         self.stats = {"batches_processed": 0, "texts_translated": 0, "api_calls": 0}
 
-    async def translate_dataframe_batch(
-        self, df: pd.DataFrame, target_lang: str = None
+    async def translate_dataframe(
+        self,
+        df: pd.DataFrame,
+        source_lang: str,
+        target_lang: str,
+        domain_terms: Optional[Dict[str, Dict[str, str]]] = None,
     ) -> pd.DataFrame:
         """
         批量翻译整个DataFrame.
 
         Args:
             df: 要翻译的DataFrame
+            source_lang: 源语言
             target_lang: 目标语言
+            domain_terms: 领域术语字典，格式为 {domain: {term: translation}}
 
         Returns:
             翻译后的DataFrame
         """
-        target = target_lang or self.target_language
         logger.info(
             f"Starting batch translation for DataFrame with {len(df)} rows and {len(df.columns)} columns"
         )
 
+        # 实例化术语管理器
+        self.terminology_manager = TerminologyManager(domain_terms)
+
         # 处理列名
-        translated_columns = await self._translate_column_names(df, target)
+        translated_columns = await self._translate_column_names(
+            df, source_lang, target_lang
+        )
 
         # 分析表格结构
         structure = self._analyze_table_structure(df)
@@ -168,7 +177,7 @@ class BatchTranslator:
         )
 
         # 提取需要翻译的文本
-        texts, positions = self._extract_texts_and_positions(df)
+        texts, positions = self._extract_texts_and_positions(df, target_lang, domain)
         logger.info(f"Extracted {len(texts)} texts for translation")
 
         if not texts:
@@ -186,7 +195,7 @@ class BatchTranslator:
         # 使用 tqdm 进度条显示翻译进度
         batch_tasks = [
             self.translate_batch_with_context(
-                i + 1, total_batches, batch, table_context, target
+                i + 1, total_batches, batch, table_context, source_lang, target_lang
             )
             for i, batch in enumerate(batches)
         ]
@@ -286,7 +295,7 @@ class BatchTranslator:
         return dict(patterns)
 
     def _extract_texts_and_positions(
-        self, df: pd.DataFrame
+        self, df: pd.DataFrame, target_language: str = None, domain: str = "general"
     ) -> Tuple[List[str], List[Tuple[int, str]]]:
         """提取需要翻译的文本和位置信息."""
         texts = []
@@ -299,9 +308,17 @@ class BatchTranslator:
                     continue
                 text = str(original_value).strip()
                 # 检查是否需要翻译
-                if not needs_translation(text, self.target_language):
+                if not needs_translation(text, target_language):
                     continue
-                texts.append(text)
+                # 检查是否有术语翻译
+                term_translation = self.terminology_manager.get_term_translation(
+                    text, domain
+                )
+                if term_translation:
+                    # 如果有术语翻译，直接使用术语翻译结果
+                    texts.append(term_translation)
+                else:
+                    texts.append(text)
                 positions.append((idx, col_name))
         # 添加调试信息
         logger.info(f"Extracted {len(texts)} texts for translation")
@@ -310,12 +327,14 @@ class BatchTranslator:
 
         return texts, positions
 
-    async def _translate_single_text(self, text: str, target_lang: str) -> str:
+    async def _translate_single_text(
+        self, text: str, source_lang: str, target_lang: str
+    ) -> str:
         """翻译单个文本."""
         max_retries = 3
         for attempt in range(max_retries):
             try:
-                prompt = f"Translate the following Chinese text to {target_lang}. Do not mix languages.\n\n{text}"
+                prompt = f"Translate the following {source_lang} text to {target_lang}. Do not mix languages.\n\n{text}"
                 response = await self.client.chat.completions.create(
                     model=self.model,
                     messages=[
@@ -326,7 +345,6 @@ class BatchTranslator:
                         {"role": "user", "content": prompt},
                     ],
                     max_tokens=500,
-                    timeout=self.timeout,
                 )
                 translated = response.choices[0].message.content.strip()
                 return translated
@@ -344,7 +362,7 @@ class BatchTranslator:
         return text
 
     async def _translate_column_names(
-        self, df: pd.DataFrame, target_lang: str
+        self, df: pd.DataFrame, source_lang: str, target_lang: str
     ) -> List[str]:
         """翻译列名."""
         logger.info(
@@ -376,7 +394,7 @@ class BatchTranslator:
                     logger.debug(f"Translating column name: '{col_name_str}'")
                     # 使用现有的翻译方法翻译列名
                     translated_name = await self._translate_single_text(
-                        col_name_str, target_lang
+                        col_name_str, source_lang, target_lang
                     )
                     logger.debug(
                         f"Translated column name: '{col_name_str}' -> '{translated_name}'"
@@ -457,6 +475,7 @@ class BatchTranslator:
         total_batches: int,
         batch: TranslationBatch,
         table_context: Dict[str, Any],
+        source_lang: str,
         target_lang: str,
     ) -> List[str]:
         """
@@ -480,7 +499,7 @@ class BatchTranslator:
 
         # 构建翻译提示
         prompt = self._build_batch_translation_prompt(
-            table_context, batch_context, batch.texts, target_lang
+            table_context, batch_context, batch.texts, source_lang, target_lang
         )
 
         # 调用API进行翻译
@@ -502,7 +521,6 @@ class BatchTranslator:
                         {"role": "user", "content": prompt},
                     ],
                     max_tokens=min(4096, self.max_tokens // 2),
-                    timeout=self.timeout,
                 )
                 api_end_time = asyncio.get_event_loop().time()
                 api_duration = api_end_time - api_start_time
@@ -532,7 +550,7 @@ class BatchTranslator:
                     )
                     # 回退到逐个翻译
                     return await self._fallback_to_individual_translation(
-                        batch.texts, target_lang
+                        batch.texts, source_lang, target_lang
                     )
                 else:
                     await asyncio.sleep(1)
@@ -544,15 +562,30 @@ class BatchTranslator:
         table_context: Dict[str, Any],
         batch_context: Dict[str, Any],
         texts: List[str],
+        source_lang: str,
         target_lang: str,
     ) -> str:
         """构建批量翻译提示."""
+        domain = table_context.get("domain", "general")
+
+        # 获取领域相关术语
+        all_terms = {}
+        for text in texts:
+            terms = self.terminology_manager.get_relevant_terms(text, domain)
+            all_terms.update(terms)
+
         # 构建表格上下文描述
         table_context_str = f"""Table context:
-- Domain: {table_context.get("domain", "general")}
-- Columns: {table_context.get("columns", [])}
-- Data types: {table_context.get("data_types", {})}
-"""
+        - Domain: {domain}
+        - Columns: {table_context.get("columns", [])}
+        - Data types: {table_context.get("data_types", {})}
+        """
+
+        # 构建术语信息
+        terms_prompt = ""
+        if all_terms:
+            terms_str = "\n".join([f"- {cn}: {en}" for cn, en in all_terms.items()])
+            terms_prompt = f"\n\nRelevant terminology:\n{terms_str}"
 
         # 构建批次上下文描述
         batch_context_str = """Batch context:
@@ -562,25 +595,27 @@ class BatchTranslator:
             batch_context_str += f'  - Row {info["row"]}, Column "{info["column"]}": {info["original_text"]}\n'
 
         # 构建待翻译文本列表
-        texts_list_str = "Chinese texts to translate:\n"
+        texts_list_str = f"{source_lang} texts to translate:\n"
         for i, text in enumerate(texts, 1):
             texts_list_str += f"{i}. {text}\n"
 
-        prompt = f"""Translate the following Chinese texts to {target_lang}. 
+        prompt = f"""Translate the following {source_lang} texts to {target_lang}. 
         Do not mix languages.
 
         {table_context_str}
         {batch_context_str}
+        {terms_prompt}
 
         Translation requirements:
-        1. Translate all texts to {target_lang}, do not leave any Chinese characters
+        1. Translate all texts to {target_lang}, do not leave any {source_lang} characters
         2. Maintain consistency with the context provided
-        3. Return translations in the same order as the original texts
-        4. Return only the translated texts without any explanations
-        5. Ensure complete translation, no partial translation allowed
-        6. Each translation should be on a separate line
-        7. Do not include the numbering (e.g., "1.", "2.") in the translations
-        8. if it is not a valid or complete Chinese text, return original text
+        3. Use the provided terminology consistently
+        4. Return translations in the same order as the original texts
+        5. Return only the translated texts without any explanations
+        6. Ensure complete translation, no partial translation allowed
+        7. Each translation should be on a separate line
+        8. Do not include the numbering (e.g., "1.", "2.") in the translations
+        9. if it is not a valid or complete {source_lang} text, return original text
 
         {texts_list_str}
 
@@ -632,14 +667,14 @@ class BatchTranslator:
         return translations
 
     async def _fallback_to_individual_translation(
-        self, texts: List[str], target_lang: str
+        self, texts: List[str], source_lang: str, target_lang: str
     ) -> List[str]:
         """回退到逐个翻译."""
         logger.info("Falling back to individual translation")
         translations = []
         for text in texts:
             try:
-                prompt = f"Translate the following Chinese text to {target_lang}. Do not mix languages.\n\n{text}"
+                prompt = f"Translate the following {source_lang} text to {target_lang}. Do not mix languages.\n\n{text}"
                 response = await self.client.chat.completions.create(
                     model=self.model,
                     messages=[
@@ -650,7 +685,6 @@ class BatchTranslator:
                         {"role": "user", "content": prompt},
                     ],
                     max_tokens=500,
-                    timeout=self.timeout,
                 )
                 translated = response.choices[0].message.content.strip()
                 translations.append(translated)
