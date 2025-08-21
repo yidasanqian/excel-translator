@@ -50,6 +50,7 @@ class IntegratedTranslator:
         source_language: str,
         target_language: str,
         domain_terms: Dict[str, Dict[str, str]] = None,
+        progress_callback=None,
     ) -> str:
         """
         翻译Excel文件.
@@ -60,6 +61,7 @@ class IntegratedTranslator:
             source_language: 源语言
             target_language: 目标语言
             domain_terms: 领域术语字典，格式为 {domain: {term: translation}}
+            progress_callback: 进度回调函数，用于报告翻译进度
 
         Returns:
             翻译后的文件路径
@@ -78,11 +80,23 @@ class IntegratedTranslator:
                 style_info = None
             logger.info(f"Reading Excel file: {file_path}")
             translated_data = {}
-            for sheet_name, df in excel_data.items():
+            total_sheets = len(excel_data.items())
+            for i, (sheet_name, df) in enumerate(excel_data.items()):
                 logger.info(f"Translating sheet: {sheet_name}")
+                # 报告工作表进度
+                if progress_callback:
+                    sheet_progress = (i / total_sheets) * 100
+                    await progress_callback(
+                        sheet_progress, f"正在翻译工作表: {sheet_name}"
+                    )
+
                 if self.use_context_aware:
                     translated_df = await self.translator.translate_dataframe(
-                        df, source_language, target_language, domain_terms
+                        df,
+                        source_language,
+                        target_language,
+                        domain_terms,
+                        progress_callback,
                     )
                 else:
                     texts = self.excel_handler.extract_text_for_translation(
@@ -100,8 +114,12 @@ class IntegratedTranslator:
                     ".xlsx", f"_translated_{target_language}.xlsx"
                 )
             else:
-                file_name = file_path.split("/")[-1]
-                output_path = f"{output_path}/translated_{target_language}_{file_name}"
+                import os
+
+                file_name = os.path.basename(file_path)
+                output_path = os.path.join(
+                    output_path, f"translated_{target_language}_{file_name}"
+                )
             if self.preserve_format:
                 result_path = self.excel_handler.write_excel_with_merge_info(
                     file_path, translated_data, output_path, merge_info, style_info
@@ -111,9 +129,11 @@ class IntegratedTranslator:
                     translated_data, output_path
                 )
             logger.info(f"Translation completed: {result_path}")
+            # 报告完成进度
+            if progress_callback:
+                await progress_callback(100, "翻译完成")
             return result_path
-        except Exception as e:
-            logger.error(f"Translation failed: {e}")
+        except Exception:
             raise
 
     async def translate_excel_data(
@@ -173,13 +193,19 @@ async def translate_excel_with_context(
     target_language: str,
     preserve_format: bool = True,
     domain_terms: Dict[str, Dict[str, str]] = None,
+    progress_callback=None,
 ) -> str:
     """使用上下文感知翻译翻译Excel文件."""
     translator = IntegratedTranslator(
         model=model, use_context_aware=True, preserve_format=preserve_format
     )
     return await translator.translate_excel_file(
-        file_path, output_path, source_language, target_language, domain_terms
+        file_path,
+        output_path,
+        source_language,
+        target_language,
+        domain_terms,
+        progress_callback,
     )
 
 
@@ -191,11 +217,17 @@ async def translate_excel_without_context(
     target_language: str,
     preserve_format: bool = True,
     domain_terms: Dict[str, Dict[str, str]] = None,
+    progress_callback=None,
 ) -> str:
     """使用传统翻译方法翻译Excel文件."""
     translator = IntegratedTranslator(
         model=model, use_context_aware=False, preserve_format=preserve_format
     )
     return await translator.translate_excel_file(
-        file_path, output_path, source_language, target_language, domain_terms
+        file_path,
+        output_path,
+        source_language,
+        target_language,
+        domain_terms,
+        progress_callback,
     )

@@ -182,6 +182,7 @@ class ContextAwareTranslator:
         source_lang: str,
         target_lang: str = None,
         domain_terms: Dict[str, Dict[str, str]] = None,
+        progress_callback=None,
     ) -> pd.DataFrame:
         """
         翻译整个DataFrame.
@@ -191,6 +192,7 @@ class ContextAwareTranslator:
             source_lang: 源语言
             target_lang: 目标语言
             domain_terms: 领域术语字典，格式为 {domain: {term: translation}}
+            progress_callback: 进度回调函数，用于报告翻译进度
 
         Returns:
             翻译后的DataFrame
@@ -232,12 +234,40 @@ class ContextAwareTranslator:
         translated_df = df.copy()
         translated_df.columns = translated_columns
         translation_map = {}
-        for batch in tqdm_asyncio(batches, desc="翻译中", unit="批次"):
-            translated_batch = await self._translate_batch(
-                batch, source_lang, target_lang, structure["domain"]
-            )
-            for unit, translated_text in zip(batch, translated_batch):
-                translation_map[unit.row_id, unit.col_name] = translated_text
+        total_batches = len(batches)
+        
+        # 如果提供了进度回调函数，则逐个执行批次并报告进度
+        if progress_callback:
+            for i, batch in enumerate(batches):
+                try:
+                    # 报告进度
+                    progress = (i / total_batches) * 100
+                    await progress_callback(progress, f"正在翻译批次 {i+1}/{total_batches}")
+                    
+                    # 执行批次翻译
+                    translated_batch = await self._translate_batch(
+                        batch, source_lang, target_lang, structure["domain"]
+                    )
+                    
+                    for unit, translated_text in zip(batch, translated_batch):
+                        translation_map[unit.row_id, unit.col_name] = translated_text
+                    
+                    # 报告完成进度
+                    progress = ((i + 1) / total_batches) * 100
+                    await progress_callback(progress, f"已完成批次 {i+1}/{total_batches}")
+                except Exception as e:
+                    logger.error(f"Batch {i+1} translation failed: {str(e)}")
+                    # 即使某个批次失败，也继续处理其他批次
+                    progress = ((i + 1) / total_batches) * 100
+                    await progress_callback(progress, f"批次 {i+1} 翻译失败: {str(e)}")
+        else:
+            # 如果没有进度回调函数，使用 tqdm 进度条显示翻译进度
+            for batch in tqdm_asyncio(batches, desc="翻译中", unit="批次"):
+                translated_batch = await self._translate_batch(
+                    batch, source_lang, target_lang, structure["domain"]
+                )
+                for unit, translated_text in zip(batch, translated_batch):
+                    translation_map[unit.row_id, unit.col_name] = translated_text
         for (row_id, col_name), translated_text in translation_map.items():
             translated_col_name = column_name_mapping[col_name]
             translated_df.iloc[
