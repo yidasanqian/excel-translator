@@ -132,6 +132,7 @@ async def translate_excel_stream(
             progress_callback,
         )
 
+        logger.info(f"翻译完成，结果文件路径: {result_path}")
         # 读取翻译后的文件内容
         with open(result_path, "rb") as f:
             file_content = f.read()
@@ -150,14 +151,9 @@ async def translate_excel_stream(
         await sse_manager.send_error(task_id, f"翻译失败: {str(e)}")
 
     finally:
-        # 清理临时文件
         try:
             if "tmp_file_path" in locals():
                 os.unlink(tmp_file_path)
-            if "output_dir" in locals():
-                import shutil
-
-                shutil.rmtree(output_dir, ignore_errors=True)
         except Exception:
             pass
 
