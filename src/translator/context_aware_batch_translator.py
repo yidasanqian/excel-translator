@@ -10,7 +10,6 @@ import tiktoken
 from openai import AsyncOpenAI
 from config.settings import settings
 from config.logging_config import get_logger
-from tqdm.asyncio import tqdm_asyncio
 from translator.translation_filter import needs_translation
 from translator.terminology_manager import TerminologyManager
 
@@ -115,7 +114,7 @@ class ContextAwareBatchTranslator:
     def __init__(
         self,
         model: str,
-        max_tokens: int = 8192,
+        max_tokens: int = 4096,
         token_buffer: int = 1000,
     ):
         self.client = AsyncOpenAI(
@@ -194,46 +193,39 @@ class ContextAwareBatchTranslator:
         # 翻译所有批次
         translated_texts = []
         total_batches = len(batches)
-        
-        # 创建批次任务列表
-        batch_tasks = [
-            self.translate_batch_with_context(
-                i + 1, total_batches, batch, table_context, source_lang, target_lang
-            )
-            for i, batch in enumerate(batches)
-        ]
 
-        # 如果提供了进度回调函数，则逐个执行批次并报告进度
-        if progress_callback:
-            for i, task in enumerate(batch_tasks):
-                try:
-                    # 报告进度
+        # 真正逐个执行批次翻译任务，确保进度事件实时发送
+        for i, batch in enumerate(batches):
+            try:
+                # 报告开始翻译批次的进度（如果有进度回调函数）
+                if progress_callback:
                     progress = (i / total_batches) * 100
-                    await progress_callback(progress, f"正在翻译批次 {i+1}/{total_batches}")
-                    
-                    # 执行批次翻译
-                    batch_result = await task
-                    translated_texts.extend(batch_result)
-                    self.stats["batches_processed"] += 1
-                    
-                    # 报告完成进度
-                    progress = ((i + 1) / total_batches) * 100
-                    await progress_callback(progress, f"已完成批次 {i+1}/{total_batches}")
-                except Exception as e:
-                    logger.error(f"Batch {i+1} translation failed: {str(e)}")
-                    # 即使某个批次失败，也继续处理其他批次
-                    progress = ((i + 1) / total_batches) * 100
-                    await progress_callback(progress, f"批次 {i+1} 翻译失败: {str(e)}")
-        else:
-            # 如果没有进度回调函数，使用 tqdm 进度条显示翻译进度
-            batch_results = await tqdm_asyncio.gather(
-                *batch_tasks, desc="翻译进度", unit="批次"
-            )
-            
-            # 处理翻译结果
-            for batch_translations in batch_results:
-                translated_texts.extend(batch_translations)
+                    await progress_callback(
+                        progress, f"正在翻译批次 {i + 1}/{total_batches}"
+                    )
+
+                # 执行批次翻译（不预创建任务，直接调用）
+                batch_result = await self.translate_batch_with_context(
+                    i + 1, total_batches, batch, table_context, source_lang, target_lang
+                )
+                translated_texts.extend(batch_result)
                 self.stats["batches_processed"] += 1
+
+                # 报告完成翻译批次的进度（如果有进度回调函数）
+                if progress_callback:
+                    progress = ((i + 1) / total_batches) * 100
+                    await progress_callback(
+                        progress, f"已完成批次 {i + 1}/{total_batches}"
+                    )
+
+            except Exception as e:
+                logger.error(f"Batch {i + 1} translation failed: {str(e)}")
+                # 即使某个批次失败，也继续处理其他批次
+                if progress_callback:
+                    progress = ((i + 1) / total_batches) * 100
+                    await progress_callback(
+                        progress, f"批次 {i + 1} 翻译失败: {str(e)}"
+                    )
 
         # 应用翻译结果到DataFrame
         translated_df = self._apply_translations_to_dataframe(

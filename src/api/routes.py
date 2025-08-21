@@ -96,66 +96,71 @@ async def translate_excel_stream(
     # 注册客户端连接，确保所有消息都能被发送
     queue = await sse_manager.register_client(task_id)
 
-    try:
-        # 发送初始化消息
-        await sse_manager.send_progress(task_id, 0, "开始处理文件")
-
-        # 保存上传的文件到临时位置
-        # 使用传入的文件内容创建临时文件
-        tmp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx")
-        tmp_file.write(file_content)
-        tmp_file_path = tmp_file.name
-        tmp_file.close()
-
-        # 创建临时输出目录
-        output_dir = tempfile.mkdtemp()
-
-        # 创建翻译器实例
-        translator = IntegratedTranslator(
-            model=model,
-            use_context_aware=True,
-            preserve_format=True,
-            batch_translation_enabled=True,
-        )
-
-        # 定义进度回调函数
-        async def progress_callback(progress: float, message: str):
-            await sse_manager.send_progress(task_id, progress, message)
-
-        # 执行翻译
-        result_path = await translator.translate_excel_file(
-            tmp_file_path,
-            output_dir,
-            source_language,
-            target_language,
-            domain_terms,
-            progress_callback,
-        )
-
-        logger.info(f"翻译完成，结果文件路径: {result_path}")
-        # 读取翻译后的文件内容
-        with open(result_path, "rb") as f:
-            file_content = f.read()
-
-        # 发送文件内容
-        await sse_manager.send_file(
-            task_id, os.path.basename(result_path), file_content
-        )
-
-        # 发送完成消息
-        await sse_manager.send_complete(task_id, "翻译完成")
-
-    except Exception as e:
-        # 发送错误消息
-        logger.exception(f"翻译失败: {str(e)}")
-        await sse_manager.send_error(task_id, f"翻译失败: {str(e)}")
-
-    finally:
+    # 定义翻译任务
+    async def translation_task():
         try:
-            if "tmp_file_path" in locals():
-                os.unlink(tmp_file_path)
-        except Exception:
-            pass
+            # 发送初始化消息
+            await sse_manager.send_progress(task_id, 0, "开始处理文件")
+
+            # 保存上传的文件到临时位置
+            # 使用传入的文件内容创建临时文件
+            tmp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx")
+            tmp_file.write(file_content)
+            tmp_file_path = tmp_file.name
+            tmp_file.close()
+
+            # 创建临时输出目录
+            output_dir = tempfile.mkdtemp()
+
+            # 创建翻译器实例
+            translator = IntegratedTranslator(
+                model=model,
+                use_context_aware=True,
+                preserve_format=True,
+                batch_translation_enabled=True,
+            )
+
+            # 定义进度回调函数
+            async def progress_callback(progress: float, message: str):
+                await sse_manager.send_progress(task_id, progress, message)
+
+            # 执行翻译
+            result_path = await translator.translate_excel_file(
+                tmp_file_path,
+                output_dir,
+                source_language,
+                target_language,
+                domain_terms,
+                progress_callback,
+            )
+
+            logger.info(f"翻译完成，结果文件路径: {result_path}")
+            # 读取翻译后的文件内容
+            with open(result_path, "rb") as f:
+                result_file_content = f.read()
+
+            # 发送文件内容
+            await sse_manager.send_file(
+                task_id, os.path.basename(result_path), result_file_content
+            )
+
+            # 发送完成消息
+            await sse_manager.send_complete(task_id, "翻译完成")
+
+        except Exception as e:
+            # 发送错误消息
+            logger.exception(f"翻译失败: {str(e)}")
+            await sse_manager.send_error(task_id, f"翻译失败: {str(e)}")
+
+        finally:
+            try:
+                if "tmp_file_path" in locals():
+                    os.unlink(tmp_file_path)
+            except Exception:
+                pass
+
+    # 启动翻译任务作为后台任务
+    asyncio.create_task(translation_task())
 
     # 流式传输消息
     try:
@@ -163,8 +168,15 @@ async def translate_excel_stream(
             message = await queue.get()
             yield message
             queue.task_done()
+
+            # 如果是完成或错误消息，结束流式传输
+            if '"type": "complete"' in message or '"type": "error"' in message:
+                break
+
     except asyncio.CancelledError:
         await sse_manager.unregister_client(task_id)
         raise
     except Exception:
+        await sse_manager.unregister_client(task_id)
+    finally:
         await sse_manager.unregister_client(task_id)

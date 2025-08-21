@@ -90,13 +90,24 @@ class IntegratedTranslator:
                         sheet_progress, f"正在翻译工作表: {sheet_name}"
                     )
 
+                # 创建工作表级别的进度回调
+                async def sheet_progress_callback(progress: float, message: str):
+                    # 将工作表进度映射到整体进度
+                    overall_progress = (i / total_sheets) * 100 + (
+                        progress / total_sheets
+                    )
+                    if progress_callback:
+                        await progress_callback(
+                            overall_progress, f"工作表 {sheet_name}: {message}"
+                        )
+
                 if self.use_context_aware:
                     translated_df = await self.translator.translate_dataframe(
                         df,
                         source_language,
                         target_language,
                         domain_terms,
-                        progress_callback,
+                        sheet_progress_callback if progress_callback else None,
                     )
                 else:
                     texts = self.excel_handler.extract_text_for_translation(
@@ -129,9 +140,6 @@ class IntegratedTranslator:
                     translated_data, output_path
                 )
             logger.info(f"Translation completed: {result_path}")
-            # 报告完成进度
-            if progress_callback:
-                await progress_callback(100, "翻译完成")
             return result_path
         except Exception:
             raise
