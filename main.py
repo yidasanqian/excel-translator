@@ -4,6 +4,10 @@ import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from api.routes import router
+from config.logging_config import setup_logging  # 添加这行导入
+
+# 初始化日志配置
+setup_logging()  # 添加这行调用
 
 # 创建FastAPI应用实例
 app = FastAPI(
