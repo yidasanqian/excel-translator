@@ -15,7 +15,7 @@ class Settings(BaseSettings):
     request_timeout: int = Field(default=30, env="REQUEST_TIMEOUT", ge=1, le=300)
     preserve_format: bool = Field(default=True, env="PRESERVE_FORMAT")
     # 批量翻译设置
-    max_tokens: int = Field(default=8192, env="MAX_TOKENS", ge=10, le=128000)
+    max_tokens: int = Field(default=4096, env="MAX_TOKENS", ge=10, le=128000)
     token_buffer: int = Field(default=500, env="TOKEN_BUFFER", ge=10, le=500)
     upload_dir: str = Field(default="uploads", env="UPLOAD_DIR")
     output_dir: str = Field(default="output", env="OUTPUT_DIR")

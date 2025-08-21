@@ -82,7 +82,7 @@ class SimpleExcelHTMLTranslator:
             timeout=settings.request_timeout,
         )
         self.model = model
-        self.max_tokens = max_tokens or 8192
+        self.max_tokens = max_tokens or 4096
         self.token_buffer = token_buffer
 
         # 初始化组件

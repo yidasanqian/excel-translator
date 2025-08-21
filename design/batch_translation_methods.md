@@ -29,7 +29,7 @@ async def translate_dataframe_batch(
 
 ```python
 def create_translation_batches(
-    self, df: pd.DataFrame, max_tokens: int = 8192
+    self, df: pd.DataFrame, max_tokens: int = 4096
 ) -> List[TranslationBatch]:
     """
     创建适合模型上下文限制的翻译批次

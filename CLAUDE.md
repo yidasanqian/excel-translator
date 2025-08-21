@@ -104,5 +104,5 @@ Key environment variables in `.env`:
 - `TARGET_LANGUAGE`: Target language (default: english)
 - `PRESERVE_FORMAT`: Preserve Excel formatting (default: true)
 - `BATCH_TRANSLATION_ENABLED`: Enable batch translation (default: true)
-- `MAX_TOKENS`: Maximum tokens per batch (default: 8192)
+- `MAX_TOKENS`: Maximum tokens per batch (default: 4096)
 - `TOKEN_BUFFER`: Token buffer for formatting (default: 500)
