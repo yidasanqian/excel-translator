@@ -26,7 +26,11 @@ class SSEManager:
     async def send_complete(self, task_id: str, message: str) -> None:
         """发送完成消息."""
         if task_id in self.clients:
-            message_data = {"type": SSEMessageType.COMPLETE, "message": message}
+            message_data = {
+                "type": SSEMessageType.COMPLETE,
+                "progress": 100,
+                "message": message,
+            }
             await self._send_sse_message(task_id, message_data)
 
     async def send_error(self, task_id: str, message: str) -> None:
