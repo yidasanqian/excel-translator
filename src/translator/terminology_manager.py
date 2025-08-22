@@ -97,7 +97,7 @@ class TerminologyManager:
         Returns:
             当前领域
         """
-        return self.domain_terms.keys()[0] if self.domain_terms else "general"
+        return next(iter(self.domain_terms)) if self.domain_terms else "general"
 
     def get_domain_terms(self, domain: str) -> Dict[str, str]:
         """
