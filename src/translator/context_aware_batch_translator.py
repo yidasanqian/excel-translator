@@ -161,10 +161,16 @@ class ContextAwareBatchTranslator:
         # 实例化术语管理器
         self.terminology_manager = TerminologyManager(domain_terms)
 
-        # 处理列名
+        # 处理列名 (10% 进度)
+        if progress_callback:
+            await progress_callback(0, "开始翻译列名")
+
         translated_columns = await self._translate_column_names(
-            df, source_lang, target_lang
+            df, source_lang, target_lang, progress_callback
         )
+
+        if progress_callback:
+            await progress_callback(10, "列名翻译完成")
 
         # 分析表格结构
         structure = self._analyze_table_structure(df)
@@ -198,10 +204,11 @@ class ContextAwareBatchTranslator:
         for i, batch in enumerate(batches):
             try:
                 # 报告开始翻译批次的进度（如果有进度回调函数）
+                # 批次翻译占90%进度，从10%开始到100%
                 if progress_callback:
-                    progress = (i / total_batches) * 100
+                    batch_progress = (i / total_batches) * 90 + 10
                     await progress_callback(
-                        progress, f"正在翻译批次 {i + 1}/{total_batches}"
+                        batch_progress, f"正在翻译批次 {i + 1}/{total_batches}"
                     )
 
                 # 执行批次翻译（不预创建任务，直接调用）
@@ -213,18 +220,18 @@ class ContextAwareBatchTranslator:
 
                 # 报告完成翻译批次的进度（如果有进度回调函数）
                 if progress_callback:
-                    progress = ((i + 1) / total_batches) * 100
+                    batch_progress = ((i + 1) / total_batches) * 90 + 10
                     await progress_callback(
-                        progress, f"已完成批次 {i + 1}/{total_batches}"
+                        batch_progress, f"已完成批次 {i + 1}/{total_batches}"
                     )
 
             except Exception as e:
                 logger.error(f"Batch {i + 1} translation failed: {str(e)}")
                 # 即使某个批次失败，也继续处理其他批次
                 if progress_callback:
-                    progress = ((i + 1) / total_batches) * 100
+                    batch_progress = ((i + 1) / total_batches) * 90 + 10
                     await progress_callback(
-                        progress, f"批次 {i + 1} 翻译失败: {str(e)}"
+                        batch_progress, f"批次 {i + 1} 翻译失败: {str(e)}"
                     )
 
         # 应用翻译结果到DataFrame
@@ -364,14 +371,26 @@ class ContextAwareBatchTranslator:
         return text
 
     async def _translate_column_names(
-        self, df: pd.DataFrame, source_lang: str, target_lang: str
+        self,
+        df: pd.DataFrame,
+        source_lang: str,
+        target_lang: str,
+        progress_callback=None,
     ) -> List[str]:
         """翻译列名."""
         logger.info(
             f"Translating column names for DataFrame with {len(df.columns)} columns"
         )
         translated_columns = []
-        for col_name in df.columns:
+        total_columns = len(df.columns)
+        for i, col_name in enumerate(df.columns):
+            # 报告列名翻译进度（在10%范围内）
+            if progress_callback and total_columns > 0:
+                column_progress = (i / total_columns) * 10
+                await progress_callback(
+                    column_progress, f"翻译列名 {i + 1}/{total_columns}"
+                )
+
             if pd.isna(col_name) or col_name is None:
                 logger.debug(f"Column name is NaN or None: {col_name}")
                 translated_columns.append(col_name)
