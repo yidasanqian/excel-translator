@@ -90,6 +90,15 @@ class TerminologyManager:
             self.domain_terms[domain] = {}
         self.domain_terms[domain].update(terms)
 
+    def get_current_domain(self) -> str:
+        """
+        获取当前领域.
+
+        Returns:
+            当前领域
+        """
+        return self.domain_terms.keys()[0] if self.domain_terms else "general"
+
     def get_domain_terms(self, domain: str) -> Dict[str, str]:
         """
         获取特定领域的所有术语.

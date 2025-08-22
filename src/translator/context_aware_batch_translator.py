@@ -253,7 +253,7 @@ class ContextAwareBatchTranslator:
     def _analyze_table_structure(self, df: pd.DataFrame) -> Dict[str, Any]:
         """分析表格结构."""
         # 检测专业领域
-        domain = self._detect_domain(df)
+        domain = self.terminology_manager.get_current_domain()
 
         # 推断数据类型
         data_types = self._infer_data_types(df)
@@ -262,21 +262,6 @@ class ContextAwareBatchTranslator:
         patterns = self._extract_patterns(df)
 
         return {"domain": domain, "data_types": data_types, "patterns": patterns}
-
-    def _detect_domain(self, df: pd.DataFrame) -> str:
-        """检测专业领域."""
-        all_text = " ".join(df.astype(str).values.flatten())
-        domain_keywords = {
-            "mechanical": ["发动机", "液压", "制动", "转向", "机械", "故障"],
-            "electrical": ["电路", "电压", "电流", "电池", "电机", "电控"],
-            "software": ["程序", "系统", "软件", "代码", "bug", "错误"],
-            "medical": ["症状", "诊断", "治疗", "药物", "手术", "患者"],
-        }
-        for domain, keywords in domain_keywords.items():
-            if any(keyword in all_text for keyword in keywords):
-                return domain
-        else:
-            return "general"
 
     def _infer_data_types(self, df: pd.DataFrame) -> Dict[str, str]:
         """推断列的数据类型."""
