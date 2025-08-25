@@ -129,10 +129,6 @@ UPLOAD_DIR=uploads
 OUTPUT_DIR=output
 MAX_FILE_SIZE=10485760
 
-# 应用设置
-APP_NAME=Excel Translator
-APP_VERSION=1.0.0
-
 # 日志设置
 LOG_LEVEL=INFO
 ```
@@ -167,8 +163,6 @@ python main.py
 - `UPLOAD_DIR`: 上传文件目录，默认为 `uploads`
 - `OUTPUT_DIR`: 输出文件目录，默认为 `output`
 - `MAX_FILE_SIZE`: 最大文件大小（字节），默认为 `10485760`（10MB）
-- `APP_NAME`: 应用名称，默认为 `Excel Translator`
-- `APP_VERSION`: 应用版本，默认为 `1.0.0`
 - `LOG_LEVEL`: 日志级别，默认为 `INFO`
 
 ## 使用方法
