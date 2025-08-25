@@ -150,3 +150,5 @@ qa_dataset*.json
 # docs files
 docs
 output
+
+private
