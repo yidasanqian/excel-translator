@@ -121,9 +121,14 @@ class IntegratedTranslator:
                     )[sheet_name]
                 translated_data[sheet_name] = translated_df
             if not output_path:
-                output_path = file_path.replace(
-                    ".xlsx", f"_translated_{target_language}.xlsx"
-                )
+                if output_path.endswith(".xls"):
+                    output_path = file_path.replace(
+                        ".xls", f"_translated_{target_language}.xls"
+                    )
+                else:
+                    output_path = file_path.replace(
+                        ".xlsx", f"_translated_{target_language}.xlsx"
+                    )
             else:
                 import os
 
