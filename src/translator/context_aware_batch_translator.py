@@ -618,7 +618,7 @@ class ContextAwareBatchTranslator:
         # 构建待翻译文本列表
         texts_list_str = f"{source_lang} texts to translate:\n"
         for i, text in enumerate(texts, 1):
-            texts_list_str += f"{i}. {text}\n"
+            texts_list_str += f"{text}\n"
 
         prompt = f"""Translate the following {source_lang} texts to {target_lang}. 
         Do not mix languages.
@@ -628,15 +628,13 @@ class ContextAwareBatchTranslator:
         {terms_prompt}
 
         Translation requirements:
-        1. Translate all texts to {target_lang}, do not leave any {source_lang} characters
-        2. Maintain consistency with the context provided
-        3. Use the provided terminology consistently
-        4. Return translations in the same order as the original texts
-        5. Return only the translated texts without any explanations
-        6. Ensure complete translation, no partial translation allowed
-        7. Each translation should be on a separate line
-        8. Do not include the numbering (e.g., "1.", "2.") in the translations
-        9. if it is not a valid or complete {source_lang} text, return original text
+        - Maintain consistency with the context provided
+        - Use the provided terminology consistently
+        - Return translations in the same order as the original texts
+        - Return only the translated texts without any explanations, the translation should retain any special characters from the original text.
+        - Ensure complete translation, no partial translation allowed
+        - Each translation should be on a separate line
+        - If it is not a valid or complete {source_lang} text, return original text
 
         {texts_list_str}
 
