@@ -16,6 +16,10 @@ COPY src/ ./
 # 安装依赖
 RUN uv sync --frozen
 
+ENV TIKTOKEN_CACHE_DIR=/app/tiktoken_cache
+# Cache the tiktoken encoding file
+RUN python -c "import tiktoken; tiktoken.encoding_for_model('gpt-4o')"
+
 # 设置环境PATH
 ENV PATH="/app/.venv/bin:$PATH"
 
