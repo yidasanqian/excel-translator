@@ -10,7 +10,7 @@ class TestContextAwareTranslation(unittest.IsolatedAsyncioTestCase):
             model=model, use_context_aware=True, preserve_format=True
         )
 
-        self.test_file = "docs/english_案例1.xlsx"
+        self.test_file = "docs/案例5.xlsx"
         self.output_path = "output"
 
     async def test_translate_excel_with_batch_translation(self):
@@ -19,7 +19,7 @@ class TestContextAwareTranslation(unittest.IsolatedAsyncioTestCase):
             self.test_file,
             output_path=self.output_path,
             source_language="中文",
-            target_language="法语",
+            target_language="英语",
         )
 
         print("Batch translation result:", result)

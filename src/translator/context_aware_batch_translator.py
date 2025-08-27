@@ -327,6 +327,8 @@ class ContextAwareBatchTranslator:
                     # 如果有术语翻译，直接使用术语翻译结果
                     texts.append(term_translation)
                 else:
+                    # 替换换行符
+                    text = text.replace("\n", " ")
                     texts.append(text)
                 positions.append((idx, col_name))
         # 添加调试信息
@@ -348,7 +350,7 @@ class ContextAwareBatchTranslator:
                 - Maintain consistency with the context provided
                 - Use the provided terminology consistently
                 - Return translations in the same order as the original texts
-                - Return only the translated texts without any explanations, the translation should retain any special characters from the original text.
+                - Return the translated texts or the original texts without any explanations, the translation should retain any special characters from the original text.
                 - Each translation should be on a separate line
                 - If it is not a valid or complete {source_lang} text, return original text
                 - Only translate text that is in {source_lang} to {target_lang}; otherwise, return the original text
@@ -425,6 +427,8 @@ class ContextAwareBatchTranslator:
                     translated_columns.append(col_name_str)
                     continue
                 else:
+                    # 替换换行符
+                    col_name_str = col_name_str.replace("\n", " ")
                     logger.debug(f"Processing column name: '{col_name_str}'")
                     logger.debug(f"Translating column name: '{col_name_str}'")
                     # 使用现有的翻译方法翻译列名
@@ -643,7 +647,7 @@ class ContextAwareBatchTranslator:
         - Maintain consistency with the context provided
         - Use the provided terminology consistently
         - Return translations in the same order as the original texts
-        - Return only the translated texts without any explanations, the translation should retain any special characters from the original text.
+        - Return the translated texts or the original texts without any explanations, the translation should retain any special characters from the original text.
         - Each translation should be on a separate line
         - If it is not a valid or complete {source_lang} text, return original text
         - Only translate text that is in {source_lang} to {target_lang}; otherwise, return the original text
@@ -666,15 +670,9 @@ class ContextAwareBatchTranslator:
         # 按行分割结果
         lines = result.strip().split("\n")
 
-        # 过滤空行并去除行首的序号
         translations = []
         for line in lines:
-            if line.strip():
-                # 去除行首的序号（如 "1. "、"2. " 等）
-                cleaned_line = line.strip()
-                if ". " in cleaned_line and cleaned_line.split(". ", 1)[0].isdigit():
-                    cleaned_line = cleaned_line.split(". ", 1)[1]
-                translations.append(cleaned_line)
+            translations.append(line)
 
         # 如果结果数量不匹配，尝试其他解析方法
         if len(translations) != expected_count:

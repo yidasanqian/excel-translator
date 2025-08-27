@@ -12,7 +12,6 @@ import tiktoken
 from tqdm.asyncio import tqdm_asyncio
 from typing import List, Dict, Any
 from dataclasses import dataclass
-import re
 
 logger = get_logger(__name__)
 
@@ -222,26 +221,15 @@ Translated texts in {target_lang}:
         # 按行分割结果
         lines = result.strip().split("\n")
 
-        # 过滤空行并处理可能的序号
         translations = []
         for line in lines:
-            line = line.strip()
-            if line:
-                # 移除行首的序号（如 "1. " 或 "94. "）
-                # 使用正则表达式匹配并移除序号
-
-                # 匹配以数字和点开头的序号，例如 "1. ", "94. ", "123. "
-                line = re.sub(r"^\d+\.\s*", "", line)
-                translations.append(line)
+            translations.append(line)
 
         # 如果结果数量不匹配，尝试其他解析方法
         if len(translations) != expected_count:
             # 如果只有一行，按句号分割
             if len(lines) == 1:
                 translations = [t.strip() for t in result.split(".") if t.strip()]
-                # 对每个分割后的翻译也移除可能的序号
-
-                translations = [re.sub(r"^\d+\.\s*", "", t) for t in translations]
 
             # 如果仍然不匹配，返回原文本
             if len(translations) != expected_count:
