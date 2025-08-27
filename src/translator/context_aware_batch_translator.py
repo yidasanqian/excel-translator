@@ -7,7 +7,7 @@ import json
 from dataclasses import dataclass
 from collections import defaultdict
 import tiktoken
-from openai import AsyncOpenAI
+from openai import OpenAI
 from config.settings import settings
 from config.logging_config import get_logger
 from translator.translation_filter import needs_translation
@@ -117,7 +117,7 @@ class ContextAwareBatchTranslator:
         max_tokens: int = 4096,
         token_buffer: int = 1000,
     ):
-        self.client = AsyncOpenAI(
+        self.client = OpenAI(
             api_key=settings.openai_api_key,
             base_url=settings.openai_base_url,
             timeout=settings.request_timeout,

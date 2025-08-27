@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from collections import defaultdict
 import hashlib
 import json
-from openai import AsyncOpenAI
+from openai import OpenAI
 from config.settings import settings
 from config.logging_config import get_logger
 from translator.data_type_config import DataTypeConfig
@@ -165,7 +165,7 @@ class ContextAwareTranslator:
         self,
         model: str,
     ):
-        self.client = AsyncOpenAI(
+        self.client = OpenAI(
             api_key=settings.openai_api_key,
             base_url=settings.openai_base_url,
             timeout=settings.request_timeout,
@@ -235,31 +235,37 @@ class ContextAwareTranslator:
         translated_df.columns = translated_columns
         translation_map = {}
         total_batches = len(batches)
-        
+
         # 如果提供了进度回调函数，则逐个执行批次并报告进度
         if progress_callback:
             for i, batch in enumerate(batches):
                 try:
                     # 报告进度
                     progress = (i / total_batches) * 100
-                    await progress_callback(progress, f"正在翻译批次 {i+1}/{total_batches}")
-                    
+                    await progress_callback(
+                        progress, f"正在翻译批次 {i + 1}/{total_batches}"
+                    )
+
                     # 执行批次翻译
                     translated_batch = await self._translate_batch(
                         batch, source_lang, target_lang, structure["domain"]
                     )
-                    
+
                     for unit, translated_text in zip(batch, translated_batch):
                         translation_map[unit.row_id, unit.col_name] = translated_text
-                    
+
                     # 报告完成进度
                     progress = ((i + 1) / total_batches) * 100
-                    await progress_callback(progress, f"已完成批次 {i+1}/{total_batches}")
+                    await progress_callback(
+                        progress, f"已完成批次 {i + 1}/{total_batches}"
+                    )
                 except Exception as e:
-                    logger.error(f"Batch {i+1} translation failed: {str(e)}")
+                    logger.error(f"Batch {i + 1} translation failed: {str(e)}")
                     # 即使某个批次失败，也继续处理其他批次
                     progress = ((i + 1) / total_batches) * 100
-                    await progress_callback(progress, f"批次 {i+1} 翻译失败: {str(e)}")
+                    await progress_callback(
+                        progress, f"批次 {i + 1} 翻译失败: {str(e)}"
+                    )
         else:
             # 如果没有进度回调函数，使用 tqdm 进度条显示翻译进度
             for batch in tqdm_asyncio(batches, desc="翻译中", unit="批次"):

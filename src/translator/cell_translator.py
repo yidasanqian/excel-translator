@@ -2,7 +2,7 @@
 
 import asyncio
 from typing import Dict, List
-from openai import AsyncOpenAI
+from openai import OpenAI
 from config.settings import settings
 from config.logging_config import get_logger
 from tqdm.asyncio import tqdm_asyncio
@@ -14,7 +14,7 @@ class ExcelCellTranslator:
     """OpenAI-based translation service."""
 
     def __init__(self, model):
-        self.client = AsyncOpenAI(
+        self.client = OpenAI(
             api_key=settings.openai_api_key,
             base_url=settings.openai_base_url,
             timeout=settings.request_timeout,
