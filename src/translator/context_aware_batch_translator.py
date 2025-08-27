@@ -343,7 +343,21 @@ class ContextAwareBatchTranslator:
         max_retries = 3
         for attempt in range(max_retries):
             try:
-                prompt = f"Translate the following {source_lang} text to {target_lang}. Do not mix languages.\n\n{text}"
+                prompt = f"""
+                Translation requirements:
+                - Maintain consistency with the context provided
+                - Use the provided terminology consistently
+                - Return translations in the same order as the original texts
+                - Return only the translated texts without any explanations, the translation should retain any special characters from the original text.
+                - Each translation should be on a separate line
+                - If it is not a valid or complete {source_lang} text, return original text
+                - Only translate text that is in {source_lang} to {target_lang}; otherwise, return the original text
+                
+                Texts wait to translate:
+                {text}
+                
+                Translated texts:
+                """
                 response = await self.client.chat.completions.create(
                     model=self.model,
                     messages=[
@@ -616,13 +630,11 @@ class ContextAwareBatchTranslator:
             batch_context_str += f'  - Row {info["row"]}, Column "{info["column"]}": {info["original_text"]}\n'
 
         # 构建待翻译文本列表
-        texts_list_str = f"{source_lang} texts to translate:\n"
+        texts_list_str = "Texts wait to translate:\n"
         for i, text in enumerate(texts, 1):
             texts_list_str += f"{text}\n"
 
-        prompt = f"""Translate the following {source_lang} texts to {target_lang}. 
-        Do not mix languages.
-
+        prompt = f"""
         {table_context_str}
         {batch_context_str}
         {terms_prompt}
@@ -632,13 +644,13 @@ class ContextAwareBatchTranslator:
         - Use the provided terminology consistently
         - Return translations in the same order as the original texts
         - Return only the translated texts without any explanations, the translation should retain any special characters from the original text.
-        - Ensure complete translation, no partial translation allowed
         - Each translation should be on a separate line
         - If it is not a valid or complete {source_lang} text, return original text
+        - Only translate text that is in {source_lang} to {target_lang}; otherwise, return the original text
 
         {texts_list_str}
 
-        Translated texts in {target_lang}:
+        Translated texts:
         """
 
         return prompt
