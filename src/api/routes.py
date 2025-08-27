@@ -46,6 +46,9 @@ async def translate_excel(
        - 文件内容消息：data: {"type": "file", "filename": "xxx.xlsx", "content": "base64_encoded_content"}
        - 错误消息：data: {"type": "error", "message": "错误详情"}
     """
+    if source_language == target_language:
+        raise ValueError("源语言和目标语言不能相同")
+
     # 生成任务ID
     task_id = str(uuid.uuid4())
 
