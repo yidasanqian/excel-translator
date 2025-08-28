@@ -16,12 +16,13 @@ COPY src/ ./
 # 安装依赖
 RUN uv sync --frozen
 
+# 设置环境PATH
+ENV PATH="/app/.venv/bin:$PATH"
+
 ENV TIKTOKEN_CACHE_DIR=/app/tiktoken_cache
 # Cache the tiktoken encoding file
 RUN python -c "import tiktoken; tiktoken.encoding_for_model('gpt-4o')"
 
-# 设置环境PATH
-ENV PATH="/app/.venv/bin:$PATH"
 
 # 启动命令
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "18000"]
