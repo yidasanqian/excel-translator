@@ -17,11 +17,12 @@ COPY src/ ./
 RUN uv sync --frozen
 
 # 设置环境PATH
-ENV PATH="/app/.venv/bin:$PATH"
-
-ENV TIKTOKEN_CACHE_DIR=/app/tiktoken_cache
+ENV TZ=Asia/Shanghai \
+    PATH=/app/.venv/bin:$PATH \
+    TIKTOKEN_CACHE_DIR=/app/tiktoken_cache
 # Cache the tiktoken encoding file
-RUN python -c "import tiktoken; tiktoken.encoding_for_model('gpt-4o')"
+RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && \
+    python -c "import tiktoken; tiktoken.encoding_for_model('gpt-4o')"
 
 
 # 启动命令
