@@ -147,7 +147,6 @@ class TranslationBatch:
 
 ```
 Translate the following Chinese texts to English. 
-Do not mix languages.
 Table context:
 - Domain: mechanical
 - Columns: [零件号, 名称, 规格]
