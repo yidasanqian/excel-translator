@@ -189,7 +189,6 @@ class SimpleExcelHTMLTranslator:
             texts_list_str += f"{i}. {text}\n"
 
         prompt = f"""Translate the following texts to {target_lang}.
-Do not mix languages.
 
 Context information:
 {context_str}
@@ -251,6 +250,7 @@ Translated texts in {target_lang}:
         batch_id: int,
         total_batches: int,
         batch: TranslationBatch,
+        source_lang: str,
         target_lang: str,
     ) -> List[str]:
         """
@@ -285,11 +285,11 @@ Translated texts in {target_lang}:
                     messages=[
                         {
                             "role": "system",
-                            "content": "You are a professional translator specializing in technical documents. Translate accurately while maintaining consistency with the context provided.",
+                            "content": "You are a professional translator specializing in documents. Translate accurately while maintaining consistency with the context provided.",
                         },
                         {"role": "user", "content": prompt},
                     ],
-                    max_tokens=min(4096, self.max_tokens // 2),
+                    max_tokens=4096,
                 )
 
                 translated_content = response.choices[0].message.content.strip()
@@ -312,7 +312,7 @@ Translated texts in {target_lang}:
                     )
                     # 回退到逐个翻译
                     return await self._fallback_to_individual_translation(
-                        batch.texts, target_lang
+                        batch.texts, source_lang, target_lang
                     )
                 else:
                     await asyncio.sleep(1)
@@ -320,20 +320,33 @@ Translated texts in {target_lang}:
         return batch.texts  # 如果所有重试都失败，返回原文本
 
     async def _fallback_to_individual_translation(
-        self, texts: List[str], target_lang: str
+        self, texts: List[str], source_lang: str, target_lang: str
     ) -> List[str]:
         """回退到逐个翻译."""
         logger.info("Falling back to individual translation")
         translations = []
         for text in texts:
             try:
-                prompt = f"Translate the following text to {target_lang}. Do not mix languages.\n\n{text}"
+                prompt = f"""
+                Translation requirements:
+                - Maintain consistency with the context provided
+                - Use the provided terminology consistently
+                - Return translations in the same order as the original texts
+                - Return the translated texts or the original texts without any explanations, the translation should retain any special characters from the original text.
+                - Each translation should be on a separate line
+                - Only translate text that is in {source_lang} to {target_lang}; otherwise, return the original text
+                
+                Texts wait to translate:
+                {text}
+                
+                Translated texts:
+                """
                 response = await self.client.chat.completions.create(
                     model=self.model,
                     messages=[
                         {
                             "role": "system",
-                            "content": "You are a professional translator. Translate accurately.",
+                            "content": "You are a professional translator specializing in documents. Translate accurately while maintaining consistency with the context provided.",
                         },
                         {"role": "user", "content": prompt},
                     ],
@@ -414,7 +427,7 @@ Translated texts in {target_lang}:
             # 使用 tqdm 进度条显示翻译进度
             batch_tasks = [
                 self._translate_batch_with_context(
-                    i + 1, total_batches, batch, target_lang
+                    i + 1, total_batches, batch, source_lang, target_lang
                 )
                 for i, batch in enumerate(batches)
             ]

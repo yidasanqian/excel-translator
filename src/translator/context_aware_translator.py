@@ -340,7 +340,7 @@ class ContextAwareTranslator:
                     messages=[
                         {
                             "role": "system",
-                            "content": "You are a professional translator specializing in technical documents. Translate accurately while maintaining consistency with the context provided.",
+                            "content": "You are a professional translator specializing in documents. Translate accurately while maintaining consistency with the context provided.",
                         },
                         {"role": "user", "content": context_prompt},
                     ],
@@ -421,7 +421,7 @@ class ContextAwareTranslator:
                         f"Term translation found: '{text}' -> '{term_translation}'"
                     )
                     return term_translation
-                prompt = f"Translate the following {source_lang} text to complete {target_lang}.\nDo not mix languages.\nContext:\n- Domain: {domain}\n{source_lang} text: {text}\nRequirements:\n1. Translate the entire text to {target_lang}, do not leave any {source_lang} characters\n2. Maintain the original meaning and context\n3. Return only the translated text without any explanations\n4. Ensure complete translation, no partial translation allowed"
+                prompt = f"Translate the following {source_lang} text to complete {target_lang}.\nContext:\n- Domain: {domain}\n{source_lang} text: {text}\nRequirements:\n1. Translate the entire text to {target_lang}, do not leave any {source_lang} characters\n2. Maintain the original meaning and context\n3. Return only the translated text without any explanations\n4. Ensure complete translation, no partial translation allowed"
                 logger.debug(
                     f"Translating single text: '{text}' from {source_lang} to {target_lang} in domain '{domain}' (attempt {attempt + 1})"
                 )
@@ -430,7 +430,7 @@ class ContextAwareTranslator:
                     messages=[
                         {
                             "role": "system",
-                            "content": "You are a professional translator specializing in technical documents. Translate accurately while maintaining consistency with the context provided.",
+                            "content": "You are a professional translator specializing in documents. Translate accurately while maintaining consistency with the context provided.",
                         },
                         {"role": "user", "content": prompt},
                     ],

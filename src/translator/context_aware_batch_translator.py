@@ -352,7 +352,6 @@ class ContextAwareBatchTranslator:
                 - Return translations in the same order as the original texts
                 - Return the translated texts or the original texts without any explanations, the translation should retain any special characters from the original text.
                 - Each translation should be on a separate line
-                - If it is not a valid or complete {source_lang} text, return original text
                 - Only translate text that is in {source_lang} to {target_lang}; otherwise, return the original text
                 
                 Texts wait to translate:
@@ -365,7 +364,7 @@ class ContextAwareBatchTranslator:
                     messages=[
                         {
                             "role": "system",
-                            "content": "You are a professional translator. Translate accurately.",
+                            "content": "You are a professional translator specializing in documents. Translate accurately while maintaining consistency with the context provided.",
                         },
                         {"role": "user", "content": prompt},
                     ],
@@ -555,11 +554,11 @@ class ContextAwareBatchTranslator:
                     messages=[
                         {
                             "role": "system",
-                            "content": "You are a professional translator specializing in technical documents. Translate accurately while maintaining consistency with the context provided.",
+                            "content": "You are a professional translator specializing in documents. Translate accurately while maintaining consistency with the context provided.",
                         },
                         {"role": "user", "content": prompt},
                     ],
-                    max_tokens=min(4096, self.max_tokens // 2),
+                    max_tokens=4096,
                 )
                 api_end_time = asyncio.get_event_loop().time()
                 api_duration = api_end_time - api_start_time
@@ -649,7 +648,6 @@ class ContextAwareBatchTranslator:
         - Return translations in the same order as the original texts
         - Return the translated texts or the original texts without any explanations, the translation should retain any special characters from the original text.
         - Each translation should be on a separate line
-        - If it is not a valid or complete {source_lang} text, return original text
         - Only translate text that is in {source_lang} to {target_lang}; otherwise, return the original text
 
         {texts_list_str}
@@ -703,13 +701,26 @@ class ContextAwareBatchTranslator:
         translations = []
         for text in texts:
             try:
-                prompt = f"Translate the following {source_lang} text to {target_lang}. Do not mix languages.\n\n{text}"
+                prompt = f"""
+                Translation requirements:
+                - Maintain consistency with the context provided
+                - Use the provided terminology consistently
+                - Return translations in the same order as the original texts
+                - Return the translated texts or the original texts without any explanations, the translation should retain any special characters from the original text.
+                - Each translation should be on a separate line
+                - Only translate text that is in {source_lang} to {target_lang}; otherwise, return the original text
+                
+                Texts wait to translate:
+                {text}
+                
+                Translated texts:
+                """
                 response = await self.client.chat.completions.create(
                     model=self.model,
                     messages=[
                         {
                             "role": "system",
-                            "content": "You are a professional translator. Translate accurately.",
+                            "content": "You are a professional translator specializing in documents. Translate accurately while maintaining consistency with the context provided.",
                         },
                         {"role": "user", "content": prompt},
                     ],
