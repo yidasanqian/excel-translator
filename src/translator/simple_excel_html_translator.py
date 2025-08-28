@@ -1,7 +1,7 @@
 from translator.excel2html import excel_to_html_with_format
 from translator.html2excel import html_to_excel_with_format
 from translator.translation_filter import needs_translation
-from openai import OpenAI
+from openai import AsyncOpenAI
 from config.settings import settings
 from config.logging_config import get_logger
 import os
@@ -75,7 +75,7 @@ class SimpleExcelHTMLTranslator:
         max_tokens: int = None,
         token_buffer: int = 1000,
     ):
-        self.client = OpenAI(
+        self.client = AsyncOpenAI(
             api_key=settings.openai_api_key,
             base_url=settings.openai_base_url,
             timeout=settings.request_timeout,

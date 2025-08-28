@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from collections import defaultdict
 import hashlib
 import json
-from openai import OpenAI
+from openai import AsyncOpenAI
 from config.settings import settings
 from config.logging_config import get_logger
 from translator.data_type_config import DataTypeConfig
@@ -165,7 +165,7 @@ class ContextAwareTranslator:
         self,
         model: str,
     ):
-        self.client = OpenAI(
+        self.client = AsyncOpenAI(
             api_key=settings.openai_api_key,
             base_url=settings.openai_base_url,
             timeout=settings.request_timeout,

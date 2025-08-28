@@ -1,8 +1,8 @@
-"""OpenAI translation service."""
+"""AsyncOpenAI translation service."""
 
 import asyncio
 from typing import Dict, List
-from openai import OpenAI
+from openai import AsyncOpenAI
 from config.settings import settings
 from config.logging_config import get_logger
 from tqdm.asyncio import tqdm_asyncio
@@ -11,10 +11,10 @@ logger = get_logger(__name__)
 
 
 class ExcelCellTranslator:
-    """OpenAI-based translation service."""
+    """AsyncOpenAI-based translation service."""
 
     def __init__(self, model):
-        self.client = OpenAI(
+        self.client = AsyncOpenAI(
             api_key=settings.openai_api_key,
             base_url=settings.openai_base_url,
             timeout=settings.request_timeout,
